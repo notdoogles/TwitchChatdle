@@ -1,0 +1,3 @@
+Drop loser images here (any format: .png, .jpg/.jpeg, .gif, .webp, .avif, .svg).
+One is picked at random and shown when the player loses a round.
+This file just keeps the otherwise-empty directory tracked in git; it is not served or referenced by the app.

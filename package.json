@@ -1,0 +1,19 @@
+{
+  "name": "twitchchatdle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo for the TwitchChatdle guessing game (Next.js/Vercel app) and its Twitch chat ingest worker",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace apps/web",
+    "build:web": "npm run build --workspace apps/web",
+    "start:web": "npm run start --workspace apps/web",
+    "start:ingest": "npm run start --workspace apps/ingest",
+    "migrate:ingest": "npm run migrate --workspace apps/ingest",
+    "test:web": "npm run test --workspace apps/web",
+    "test:ingest": "npm run test --workspace apps/ingest",
+    "test": "npm run test:web && npm run test:ingest"
+  }
+}

@@ -1,0 +1,28 @@
+.group {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--surface);
+  gap: 2px;
+}
+
+.option,
+.active {
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.option:hover {
+  color: var(--text-primary);
+}
+
+.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}

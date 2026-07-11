@@ -1,0 +1,248 @@
+.panel {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.panelTitle {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.chatLog {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 160px;
+}
+
+.chatLine {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.username {
+  color: var(--accent);
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.message {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.systemLine {
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.win {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.lose {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.pips {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.pipFull,
+.pipEmpty {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.pipFull {
+  background: var(--warn);
+}
+
+.pipEmpty {
+  background: var(--pip-empty);
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sendButton {
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sendButton:hover {
+  filter: brightness(1.08);
+}
+
+.loading {
+  padding: 0 14px 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.newRoundButton {
+  margin: 12px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 14px;
+  align-self: flex-start;
+}
+
+.newRoundButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.showMessagesButton {
+  align-self: center;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.showMessagesButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.results {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.resultBanner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.resultHeading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.resultImage {
+  max-width: 260px;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.guessList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.guessList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.guessIcon {
+  font-size: 12px;
+}
+
+.guessCorrect {
+  border-color: var(--success) !important;
+}
+
+.guessWrong {
+  opacity: 0.85;
+}
+
+.countdown {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+}

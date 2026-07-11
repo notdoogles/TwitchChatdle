@@ -1,0 +1,17 @@
+{
+  "name": "twitch-chat-ingest",
+  "version": "1.0.0",
+  "description": "Persistent worker that logs Twitch chat messages to Postgres",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "migrate": "node migrate.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "tmi.js": "^1.8.5",
+    "pg": "^8.11.5",
+    "dotenv": "^16.4.5"
+  }
+}
