@@ -115,11 +115,13 @@ export default function GameBoard({
   const [correctUsername, setCorrectUsername] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [allMessages, setAllMessages] = useState<string[] | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [countdown, setCountdown] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
+  const modalCloseRef = useRef<HTMLButtonElement>(null);
 
   // Loads (or resumes) today's round. Runs once per calendar day: the
   // server always returns the same answer for the day, and any saved
@@ -151,11 +153,43 @@ export default function GameBoard({
             (stored.status === 'won' ? pickResultImage(winnerImages) : stored.status === 'lost' ? pickResultImage(loserImages) : null)
         );
         setAllMessages(stored.allMessages ?? null);
+        setModalOpen(stored.status === 'won' || stored.status === 'lost');
         setShowAllMessages(false);
         setGuessValue('');
         setStatus(stored.status);
         if (stored.status === 'playing') {
           requestAnimationFrame(() => inputRef.current?.focus());
+        } else if (
+          (stored.status === 'won' || stored.status === 'lost') &&
+          !stored.allMessages &&
+          stored.correctUsername &&
+          stored.guesses.length > 0
+        ) {
+          // A finished round saved without its full message set (e.g.
+          // persisted by an older build) would resume with an empty results
+          // transcript. Re-grade the already-known correct answer to recover
+          // the messages -- the guess endpoint only returns them for a
+          // correct guess, so this exposes nothing the player doesn't
+          // already have.
+          try {
+            const recoverRes = await fetch('/api/game/guess', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                roundId: data.roundId,
+                guess: stored.correctUsername,
+                guessNumber: stored.guesses.length - 1,
+              }),
+            });
+            const recovered = await recoverRes.json();
+            if (recoverRes.ok && Array.isArray(recovered.allMessages)) {
+              setAllMessages(recovered.allMessages);
+              persist(storagePrefix, { ...stored, allMessages: recovered.allMessages });
+            }
+          } catch {
+            // Best-effort recovery -- the transcript falls back to the
+            // messages already revealed during play.
+          }
         }
       } else {
         const initial: StoredState = {
@@ -175,6 +209,7 @@ export default function GameBoard({
         setCorrectUsername(null);
         setResultImage(null);
         setAllMessages(null);
+        setModalOpen(false);
         setShowAllMessages(false);
         setGuessValue('');
         setStatus('playing');
@@ -201,12 +236,30 @@ export default function GameBoard({
 
   // Keep the newest revealed message in view when the chat log scrolls
   // internally (long messages can overflow its capped height). When the
-  // player reveals all 5 at the end, jump to the top so they read from #1.
+  // player reveals all messages at the end, jump to the top so they read
+  // from #1.
   useEffect(() => {
     const el = chatLogRef.current;
     if (!el) return;
     el.scrollTop = showAllMessages ? 0 : el.scrollHeight;
   }, [lines, showAllMessages, allMessages]);
+
+  // While the results modal is open: lock body scroll, close on Escape, and
+  // move focus to its close button for keyboard/screen-reader users.
+  useEffect(() => {
+    if (!modalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setModalOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    modalCloseRef.current?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [modalOpen]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -250,6 +303,7 @@ export default function GameBoard({
       setCorrectUsername(newCorrectUsername);
       setResultImage(newResultImage);
       setAllMessages(newAllMessages);
+      setModalOpen(newStatus === 'won' || newStatus === 'lost');
       setShowAllMessages(false);
       setGuessValue('');
       setShowSuggestions(false);
@@ -306,6 +360,7 @@ export default function GameBoard({
   const displayedLines = isOver && showAllMessages && allMessages ? allMessages : lines;
 
   return (
+    <>
     <div className={styles.panel}>
       <div className={styles.panelHeader}>
         <span className={styles.dot} />
@@ -394,27 +449,13 @@ export default function GameBoard({
 
       {isOver && (
         <div className={styles.results}>
-          <div className={`${styles.resultBanner} ${status === 'won' ? styles.win : styles.lose}`}>
-            <h2 className={styles.resultHeading}>
-              {status === 'won' ? winnerMessage : loserMessage}
-            </h2>
-            {resultImage && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                className={styles.resultImage}
-                src={resultImage}
-                alt={status === 'won' ? 'Winner' : 'Loser'}
-              />
-            )}
-          </div>
-
           <div className={`${styles.systemLine} ${status === 'won' ? styles.win : styles.lose}`}>
             It was <strong>{correctUsername}</strong>.
           </div>
 
-          {status === 'won' && allMessages && !showAllMessages && (
-            <button type="button" className={styles.showMessagesButton} onClick={() => setShowAllMessages(true)}>
-              Show all 5 messages
+          {!showAllMessages && (
+            <button type="button" className={styles.viewResultsButton} onClick={() => setModalOpen(true)}>
+              View result
             </button>
           )}
 
@@ -440,6 +481,54 @@ export default function GameBoard({
         </button>
       )}
     </div>
+
+    {isOver && modalOpen && (
+      <div className={styles.modalOverlay} onClick={() => setModalOpen(false)}>
+        <div
+          className={styles.modalCard}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="result-heading"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            ref={modalCloseRef}
+            type="button"
+            className={styles.modalClose}
+            onClick={() => setModalOpen(false)}
+            aria-label="Close results"
+          >
+            ×
+          </button>
+
+          <div className={`${styles.resultBanner} ${status === 'won' ? styles.win : styles.lose}`}>
+            <h2 id="result-heading" className={styles.resultHeading}>
+              {status === 'won' ? winnerMessage : loserMessage}
+            </h2>
+            {resultImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className={styles.resultImage}
+                src={resultImage}
+                alt={status === 'won' ? 'Winner' : 'Loser'}
+              />
+            )}
+          </div>
+
+          <button
+            type="button"
+            className={styles.sendButton}
+            onClick={() => {
+              setShowAllMessages(true);
+              setModalOpen(false);
+            }}
+          >
+            View all messages
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
