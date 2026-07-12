@@ -45,6 +45,10 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   height: 100vh;
+  /* dvh tracks the *visible* viewport, so mobile browser chrome (address
+     bar) can't push the bottom of the layout out of reach while the body
+     itself is overflow:hidden. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
