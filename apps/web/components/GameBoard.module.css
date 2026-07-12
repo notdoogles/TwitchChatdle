@@ -38,6 +38,11 @@
   flex-direction: column;
   gap: 10px;
   min-height: 160px;
+  /* Bound the chat area to a share of the viewport and scroll it internally
+     so that several long/multi-line messages stacking up can't push the
+     guess box (below it) off-screen. */
+  max-height: 42dvh;
+  overflow-y: auto;
 }
 
 .chatLine {
@@ -54,6 +59,10 @@
 
 .message {
   color: var(--text-primary);
+  /* Messages vary wildly in length and may run several lines; wrap normally
+     but also break inside otherwise-unbreakable runs (long URLs, no-space
+     copypasta) so nothing overflows the panel horizontally. */
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -104,19 +113,64 @@
   background: var(--surface-2);
 }
 
-.input {
+.inputWrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
   padding: 10px 12px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .input:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Opens upward: the guess box sits near the bottom of the panel, so a
+     downward menu would overflow off small screens / behind the footer. */
+  bottom: calc(100% + 6px);
+  max-height: 220px;
+  overflow-y: auto;
+  /* Opaque surface (not translucent) so the chat log behind it never bleeds
+     through and makes suggestions unreadable, notably on mobile. */
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.suggestion,
+.suggestionActive {
+  padding: 9px 10px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestionActive,
+.suggestion:hover {
+  background: var(--surface-2);
 }
 
 .sendButton {
@@ -200,9 +254,16 @@
 }
 
 .resultImage {
-  max-width: 260px;
-  width: 100%;
+  /* Win/loss images are user-supplied and come in any dimensions/aspect
+     ratio. Cap both axes and preserve aspect ratio so a tall portrait image
+     can't dominate the panel and a wide one can't overflow it; width:auto
+     (not 100%) also keeps a small image at its natural size instead of
+     upscaling it into a blurry mess. */
+  max-width: 100%;
+  max-height: min(240px, 40dvh);
+  width: auto;
   height: auto;
+  object-fit: contain;
   border-radius: 8px;
 }
 

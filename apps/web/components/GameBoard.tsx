@@ -10,6 +10,7 @@ import {
   getMsUntilNextGameDate,
   slugify,
 } from '@/lib/config';
+import { filterUsernameSuggestions } from '@/lib/usernameSuggestions';
 
 type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
 
@@ -109,6 +110,8 @@ export default function GameBoard({
   const [maxGuesses, setMaxGuesses] = useState(0);
   const [usernameHints, setUsernameHints] = useState<string[]>([]);
   const [guessValue, setGuessValue] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [correctUsername, setCorrectUsername] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [allMessages, setAllMessages] = useState<string[] | null>(null);
@@ -116,6 +119,7 @@ export default function GameBoard({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [countdown, setCountdown] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatLogRef = useRef<HTMLDivElement>(null);
 
   // Loads (or resumes) today's round. Runs once per calendar day: the
   // server always returns the same answer for the day, and any saved
@@ -195,6 +199,15 @@ export default function GameBoard({
     return () => clearInterval(id);
   }, [status]);
 
+  // Keep the newest revealed message in view when the chat log scrolls
+  // internally (long messages can overflow its capped height). When the
+  // player reveals all 5 at the end, jump to the top so they read from #1.
+  useEffect(() => {
+    const el = chatLogRef.current;
+    if (!el) return;
+    el.scrollTop = showAllMessages ? 0 : el.scrollHeight;
+  }, [lines, showAllMessages, allMessages]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!roundId || !gameDate || !guessValue.trim() || status !== 'playing') return;
@@ -239,6 +252,8 @@ export default function GameBoard({
       setAllMessages(newAllMessages);
       setShowAllMessages(false);
       setGuessValue('');
+      setShowSuggestions(false);
+      setActiveSuggestion(-1);
 
       persist(storagePrefix, {
         gameDate,
@@ -259,6 +274,35 @@ export default function GameBoard({
   const guessesRemaining = maxGuesses - guesses.length;
   const isOver = status === 'won' || status === 'lost';
 
+  const suggestions = filterUsernameSuggestions(usernameHints, guessValue);
+  const suggestionsOpen = showSuggestions && suggestions.length > 0;
+
+  function selectSuggestion(name: string) {
+    setGuessValue(name);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
+    inputRef.current?.focus();
+  }
+
+  function handleGuessKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!suggestionsOpen) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestion((prev) => (prev + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestion((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      // Only intercept Enter when a suggestion is highlighted, otherwise
+      // let the form submit the typed guess as-is.
+      e.preventDefault();
+      selectSuggestion(suggestions[activeSuggestion]);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setActiveSuggestion(-1);
+    }
+  }
+
   const displayedLines = isOver && showAllMessages && allMessages ? allMessages : lines;
 
   return (
@@ -270,7 +314,7 @@ export default function GameBoard({
         <span className={styles.panelTitle}>chat</span>
       </div>
 
-      <div className={styles.chatLog}>
+      <div className={styles.chatLog} ref={chatLogRef}>
         {displayedLines.map((text, i) => (
           <div key={i} className={styles.chatLine}>
             <span className={styles.username}>{isOver && showAllMessages ? correctUsername : '???'}</span>
@@ -291,21 +335,52 @@ export default function GameBoard({
 
       {status === 'playing' && (
         <form className={styles.inputRow} onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            className={styles.input}
-            list="username-hints"
-            value={guessValue}
-            onChange={(e) => setGuessValue(e.target.value)}
-            placeholder="Guess a username..."
-            autoComplete="off"
-            aria-label="Guess a username"
-          />
-          <datalist id="username-hints">
-            {usernameHints.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
+          <div className={styles.inputWrap}>
+            <input
+              ref={inputRef}
+              className={styles.input}
+              value={guessValue}
+              onChange={(e) => {
+                setGuessValue(e.target.value);
+                setShowSuggestions(true);
+                setActiveSuggestion(-1);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setShowSuggestions(false)}
+              onKeyDown={handleGuessKeyDown}
+              placeholder="Guess a username..."
+              autoComplete="off"
+              role="combobox"
+              aria-expanded={suggestionsOpen}
+              aria-controls="username-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                activeSuggestion >= 0 ? `username-suggestion-${activeSuggestion}` : undefined
+              }
+              aria-label="Guess a username"
+            />
+            {suggestionsOpen && (
+              <ul className={styles.suggestions} id="username-suggestions" role="listbox">
+                {suggestions.map((name, i) => (
+                  <li
+                    key={name}
+                    id={`username-suggestion-${i}`}
+                    role="option"
+                    aria-selected={i === activeSuggestion}
+                    className={i === activeSuggestion ? styles.suggestionActive : styles.suggestion}
+                    // onMouseDown (not onClick) fires before the input's blur,
+                    // and preventDefault keeps focus on the input.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectSuggestion(name);
+                    }}
+                  >
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <button type="submit" className={styles.sendButton}>
             Guess
           </button>

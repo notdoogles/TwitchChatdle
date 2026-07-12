@@ -29,3 +29,17 @@
   color: var(--text-secondary);
   margin: 0;
 }
+
+/* Phone breakpoint: 600px comfortably covers every phone (portrait and
+   landscape) while staying above the 480px panel, so the panel is already
+   edge-to-edge here and the extra side padding is just wasted width. */
+@media (max-width: 600px) {
+  .main {
+    padding: 16px 12px 12px;
+    gap: 14px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+}
