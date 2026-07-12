@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Monorepo for the TwitchChatdle guessing game (Next.js/Vercel app) and its Twitch chat ingest worker",
+  "engines": {
+    "node": ">=18"
+  },
   "workspaces": [
     "apps/*"
   ],
