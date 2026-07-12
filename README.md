@@ -86,11 +86,55 @@ Then follow the setup steps in each app's README, in this order:
 Give `ingest` some time to log real chat before playing. The game needs at
 least 5 unique, readable messages from the same chatter to build a round.
 
+## Forking & staying in sync
+
+If you fork this repo for your own channel, you'll likely want future
+TwitchChatdle improvements (bug fixes, new features) without redoing your
+customizations by hand every time. This is normal git, no special tooling
+needed:
+
+1. **Fork on GitHub, then clone your fork.** Since your fork shares git
+   history with this repo from the start, pulling in updates later is a
+   plain merge.
+2. **Add this repo as a second remote** so you can fetch from it directly:
+   ```
+   git remote add upstream https://github.com/notdoogles/TwitchChatdle.git
+   ```
+3. **Isolate your customizations** rather than editing shared files
+   in place, wherever practical:
+   - Prefer new, self-contained files/components over rewriting existing
+     ones (see `elliebdle`'s `AdSidebar` component for an example: a new
+     component + its own CSS module, wired in with a couple of lines in
+     `layout.tsx`, instead of editing the shared layout markup).
+   - Prefer env vars over hardcoded branding/copy/images (`GAME_NAME`,
+     `WINNER_MESSAGE`, `LOSER_MESSAGE`, etc., see each app's README).
+   - Keep your custom win/loss images as your own files instead of adding
+     them into the shared image directories, so a later merge doesn't mix
+     them with new upstream placeholder images.
+
+   The less you touch shared files, the fewer merge conflicts you'll get
+   when pulling in updates.
+4. **Pull in updates whenever you want them:**
+   ```
+   git fetch upstream
+   git merge upstream/main
+   ```
+   Resolve any conflicts (should be rare/small if your customizations are
+   isolated per above), re-run the test suites, and commit.
+
+   If you started from a pre-existing repo that *didn't* originally fork
+   from this one (e.g. you built your own version first and want to
+   retrofit this workflow), you'll need a one-time
+   `git merge upstream/main --allow-unrelated-histories` instead to
+   establish shared history. Every merge after that first one is a normal
+   `git merge upstream/main`.
+
 ## Deployment
 
-The author runs this on **Vercel** (`apps/web`), **Supabase** (Postgres),
-and their **own always-on server** for `apps/ingest`. None of that is a
-requirement, it's just what's convenient for the author's setup:
+This was designed to run on **Vercel** (`apps/web`), **Supabase** (Postgres),
+and my **own always-on server** for `apps/ingest`. None of that is a
+requirement, it's just what's convenient for me as I already have a server to run the ingest 
+and the app can easily be run on the free tiers of Vercel and Supabase:
 
 - `apps/web` is a standard Next.js app and can be deployed anywhere Next.js
   is supported (Vercel, a Node server, Docker, etc.).
