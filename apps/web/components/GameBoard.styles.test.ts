@@ -91,3 +91,19 @@ describe('variably-sized win/loss images stay contained', () => {
     expect(body).toMatch(/(^|[^-])width:\s*auto/m);
   });
 });
+
+describe('results modal is not constrained by the panel', () => {
+  const css = readCss('./GameBoard.module.css');
+
+  it('overlays the whole viewport above the panel rather than flowing inside it', () => {
+    const body = ruleBody(css, 'modalOverlay');
+    expect(body).toMatch(/position:\s*fixed/);
+    expect(body).toMatch(/z-index:\s*\d+/);
+  });
+
+  it('caps its own height and scrolls so a tall celebration cannot run off screen', () => {
+    const body = ruleBody(css, 'modalCard');
+    expect(body).toMatch(/max-height:/);
+    expect(body).toMatch(/overflow-y:\s*auto/);
+  });
+});

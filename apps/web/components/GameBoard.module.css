@@ -42,9 +42,8 @@
 
 /* Only while a round is in progress: bound the chat area and scroll it
    internally so several long/multi-line messages can't push the guess box
-   off-screen. Once the round is over the cap is dropped (see chatLogScroll
-   is not applied) so the full results, including the "show all messages"
-   button, flow into the page scroll instead of being trapped behind an
+   off-screen. Once the round is over the cap is dropped so the full revealed
+   transcript flows into the page scroll instead of being trapped behind an
    inner scroll container the user can't get past. */
 .chatLogScroll {
   max-height: 42dvh;
@@ -217,8 +216,7 @@
   color: var(--accent);
 }
 
-.showMessagesButton {
-  align-self: center;
+.viewResultsButton {
   padding: 8px 14px;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -226,11 +224,65 @@
   color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
+  align-self: center;
 }
 
-.showMessagesButton:hover {
+.viewResultsButton:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* Results overlay: the win/loss celebration (message + images) shown in a
+   modal so it isn't constrained by the chat/guessing panel underneath. Its
+   "view all messages" action dismisses the modal and reveals every message
+   in the panel below. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  overflow-y: auto;
+}
+
+.modalCard {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 16px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.modalClose {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modalClose:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
 .results {
