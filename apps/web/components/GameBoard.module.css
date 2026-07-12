@@ -38,9 +38,15 @@
   flex-direction: column;
   gap: 10px;
   min-height: 160px;
-  /* Bound the chat area to a share of the viewport and scroll it internally
-     so that several long/multi-line messages stacking up can't push the
-     guess box (below it) off-screen. */
+}
+
+/* Only while a round is in progress: bound the chat area and scroll it
+   internally so several long/multi-line messages can't push the guess box
+   off-screen. Once the round is over the cap is dropped (see chatLogScroll
+   is not applied) so the full results, including the "show all messages"
+   button, flow into the page scroll instead of being trapped behind an
+   inner scroll container the user can't get past. */
+.chatLogScroll {
   max-height: 42dvh;
   overflow-y: auto;
 }

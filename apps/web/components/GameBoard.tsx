@@ -314,7 +314,10 @@ export default function GameBoard({
         <span className={styles.panelTitle}>chat</span>
       </div>
 
-      <div className={styles.chatLog} ref={chatLogRef}>
+      <div
+        className={`${styles.chatLog}${isOver ? '' : ` ${styles.chatLogScroll}`}`}
+        ref={chatLogRef}
+      >
         {displayedLines.map((text, i) => (
           <div key={i} className={styles.chatLine}>
             <span className={styles.username}>{isOver && showAllMessages ? correctUsername : '???'}</span>

@@ -60,10 +60,17 @@ describe('variable-length messages wrap instead of overflowing', () => {
     expect(body).toMatch(/overflow-wrap:\s*anywhere/);
   });
 
-  it('caps the chat log height and scrolls it so the guess box stays reachable', () => {
-    const body = ruleBody(css, 'chatLog');
+  it('caps the chat log height and scrolls it during play so the guess box stays reachable', () => {
+    const body = ruleBody(css, 'chatLogScroll');
     expect(body).toMatch(/max-height:/);
     expect(body).toMatch(/overflow-y:\s*auto/);
+  });
+
+  it('does not trap the chat log behind an inner scroll once the round is over', () => {
+    // The cap/scroll lives on a separate modifier class that the component
+    // only applies while playing, so the results view can page-scroll freely.
+    const base = ruleBody(css, 'chatLog');
+    expect(base).not.toMatch(/overflow-y:\s*auto/);
   });
 });
 
