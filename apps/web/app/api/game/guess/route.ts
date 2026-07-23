@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { waitUntil } from '@vercel/functions';
 import { submitGuess } from '@/lib/game';
+import { getRequestContext } from '@/lib/requestContext';
+import { logRequest } from '@/lib/requestLog';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/guess'));
+
   let body: { roundId?: string; guess?: string; guessNumber?: number };
   try {
     body = await req.json();
