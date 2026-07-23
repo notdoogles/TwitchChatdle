@@ -68,12 +68,25 @@ create unique index if not exists idx_game_rounds_channel_date
 create index if not exists idx_messages_channel_len
   on messages (channel)
   include (message_text);
+
+-- Owned by apps/web. Optional request observability log for diagnosing
+-- unusual traffic patterns; not required for gameplay.
+create table if not exists request_log (
+  id bigserial primary key,
+  address text,
+  path text not null,
+  referrer text,
+  user_agent text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_request_log_created_at on request_log(created_at);
 `;
 
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
-  console.log('Done. Tables ready: users, messages, excluded_users, game_rounds');
+  console.log('Done. Tables ready: users, messages, excluded_users, game_rounds, request_log');
   await pool.end();
 }
 
