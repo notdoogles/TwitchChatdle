@@ -37,6 +37,38 @@ filtering, config/env parsing, reset-time math, win/loss image listing,
 and round creation/guess grading with a mocked database). No live database
 connection is needed.
 
+## Running multiple streamers from one deployment
+
+By default every setting comes from env vars, one streamer per deployment,
+exactly as described above. If you want to host several streamers off a
+single Vercel project/deployment instead (one shared codebase, cheaper than
+a fork or Vercel project per streamer), add entries to `lib/tenants.ts`:
+
+```ts
+export const TENANTS: Record<string, TenantOverrides> = {
+  'streamer1.example.com': {
+    channel: 'streamer1',
+    gameName: 'Streamer1dle',
+    imagesSlug: 'streamer1',
+  },
+};
+```
+
+The key is the exact hostname (no protocol/port) a streamer's game will be
+served from. Every field is optional and overrides the matching env var
+only for requests to that host; anything you omit still falls back to the
+env vars/defaults. Attach each hostname as a domain on the same Vercel
+project (Project -> Settings -> Domains) and point its DNS at Vercel.
+
+For win/loss images, drop a tenant's files in
+`public/static/tenants/<imagesSlug>/winners/` and `.../losers/` instead of
+the shared `public/static/winners|losers/` directories -- those folders are
+only used as a fallback when a tenant has no images of its own (or for the
+single-tenant/default case, where there's no tenant at all).
+
+This is purely additive: if `lib/tenants.ts` has no entries (the default),
+behavior is identical to the single-tenant setup above.
+
 ## Deploying to Vercel
 
 1. Push this folder to a GitHub repo, import it in Vercel.

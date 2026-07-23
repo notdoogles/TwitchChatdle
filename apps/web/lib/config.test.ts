@@ -6,8 +6,10 @@ import {
   DEFAULT_RESET_TIMEZONE,
   DEFAULT_USERNAME_HINTS_LIMIT,
   DEFAULT_WINNER_MESSAGE,
+  getChannel,
   getGameDate,
   getGameName,
+  getImagesSlug,
   getLoserMessage,
   getMsUntilNextGameDate,
   getResetHour,
@@ -16,6 +18,7 @@ import {
   getWinnerMessage,
   slugify,
 } from './config';
+import { TENANTS } from './tenants';
 
 beforeEach(() => {
   vi.unstubAllEnvs();
@@ -23,6 +26,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  for (const key of Object.keys(TENANTS)) delete TENANTS[key];
 });
 
 describe('getGameName / getWinnerMessage / getLoserMessage', () => {
@@ -175,5 +179,45 @@ describe('getMsUntilNextGameDate', () => {
     const ms = getMsUntilNextGameDate(justAfterSixAmReset);
     expect(ms).toBeGreaterThan(23 * 3600_000);
     expect(ms).toBeLessThanOrEqual(24 * 3600_000);
+  });
+});
+
+describe('multi-tenant overrides (lib/tenants.ts)', () => {
+  const HOST = 'streamer1.example.com:443';
+  const HOSTNAME = 'streamer1.example.com';
+
+  it('a tenant override takes priority over the matching env var', () => {
+    vi.stubEnv('GAME_NAME', 'EnvName');
+    vi.stubEnv('TWITCH_CHANNEL', 'env-channel');
+    TENANTS[HOSTNAME] = { gameName: 'TenantName', channel: 'tenant-channel' };
+    expect(getGameName(HOST)).toBe('TenantName');
+    expect(getChannel(HOST)).toBe('tenant-channel');
+  });
+
+  it('falls back to the env var / default when no tenant matches the host', () => {
+    vi.stubEnv('GAME_NAME', 'EnvName');
+    TENANTS[HOSTNAME] = { gameName: 'TenantName' };
+    expect(getGameName('unrelated-host.com')).toBe('EnvName');
+    expect(getGameName(undefined)).toBe('EnvName');
+  });
+
+  it('falls back through env var to the default when neither is set', () => {
+    expect(getChannel(HOST)).toBeUndefined();
+    expect(getImagesSlug(HOST)).toBeUndefined();
+  });
+
+  it('applies tenant overrides for reset hour/timezone and username hints limit', () => {
+    vi.stubEnv('RESET_HOUR', '0');
+    vi.stubEnv('RESET_TIMEZONE', 'UTC');
+    vi.stubEnv('USERNAME_HINTS_LIMIT', '50');
+    TENANTS[HOSTNAME] = { resetHour: 9, resetTimezone: 'Europe/London', usernameHintsLimit: 10 };
+    expect(getResetHour(HOST)).toBe(9);
+    expect(getResetTimezone(HOST)).toBe('Europe/London');
+    expect(getUsernameHintsLimit(HOST)).toBe(10);
+  });
+
+  it('resolves getImagesSlug from a tenant override', () => {
+    TENANTS[HOSTNAME] = { imagesSlug: 'streamer1' };
+    expect(getImagesSlug(HOST)).toBe('streamer1');
   });
 });

@@ -131,7 +131,7 @@ export default function GameBoard({
     setStatus('loading');
     setErrorMsg(null);
     try {
-      const today = getGameDate();
+      const today = getGameDate(new Date(), window.location.hostname);
       cleanupOldEntries(storagePrefix, today);
 
       const res = await fetch('/api/game/new', { method: 'POST' });
@@ -228,7 +228,7 @@ export default function GameBoard({
   // Countdown to the next midnight EST, shown once today's game is over.
   useEffect(() => {
     if (status !== 'won' && status !== 'lost') return;
-    const tick = () => setCountdown(formatCountdown(getMsUntilNextGameDate()));
+    const tick = () => setCountdown(formatCountdown(getMsUntilNextGameDate(new Date(), window.location.hostname)));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
