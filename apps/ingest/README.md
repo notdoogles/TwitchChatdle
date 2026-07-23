@@ -43,3 +43,25 @@ connection is needed.
 ## Deploying as an always-on process
 
 This needs a host that keeps a process running (not serverless/Vercel). Fly.io or Railway's free/hobby tiers both work: deploy this folder, set the env vars in their dashboard, and run `npm start` as the start command.
+
+### Running on a VPS without root (PM2)
+
+[PM2](https://pm2.keymetrics.io/) restarts the process automatically on
+a crash and can be resurrected after a reboot, and works fine without
+root: `npm install -g pm2` needs write access to the global
+`node_modules` (usually root-owned), so install it as a local
+dev dependency instead and run it via `npx`/npm scripts:
+
+```
+npm install --save-dev pm2   # already in package.json, just npm install
+npm run pm2:start            # runs: pm2 start ecosystem.config.cjs
+npx pm2 save                 # persist the process list
+```
+
+- `npx pm2 status` / `npx pm2 logs ingest` for status and logs.
+- To survive a VPS reboot without root access to install a systemd
+  service, add a line to your **user** crontab (`crontab -e`, no root
+  needed):
+  ```
+  @reboot cd /path/to/apps/ingest && npm run pm2:resurrect
+  ```

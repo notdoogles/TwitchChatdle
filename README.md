@@ -153,6 +153,7 @@ and the app can easily be run on the free tiers of Vercel and Supabase:
 | Streamer | Game |
 | --- | --- |
 | [elliebwalker](https://twitch.tv/elliebwalker) | [elliebdle.doogl.es](https://elliebdle.doogl.es) |
+| [whisqey](https://twitch.tv/whisqey) | [whisqeydle.doogl.es](https://whisqeydle.doogl.es) |
 
 Running this for your own channel? Let me know (see [Contact](#contact)) and I'll add you to the list above.
 

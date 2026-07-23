@@ -23,6 +23,12 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// Without this listener, a network error on an idle pooled connection
+// crashes the whole process (unhandled 'error' event on an EventEmitter).
+pool.on('error', (err) => {
+  console.error('Unexpected pg pool error:', err.message);
+});
+
 // In-memory set of lowercased usernames to never log. Merged from the
 // EXCLUDED_USERNAMES env var and the excluded_users DB table, refreshed
 // periodically so you can add/remove names without restarting the worker.
@@ -100,4 +106,16 @@ process.on('SIGINT', async () => {
   await client.disconnect();
   await pool.end();
   process.exit(0);
+});
+
+// Last-resort safety nets: log and exit so the process manager (e.g. PM2)
+// can restart cleanly, rather than crashing silently or hanging.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
 });

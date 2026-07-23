@@ -7,11 +7,16 @@
   "scripts": {
     "start": "node index.js",
     "migrate": "node migrate.js",
-    "test": "node --test"
+    "test": "node --test",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:resurrect": "pm2 resurrect"
   },
   "dependencies": {
-    "tmi.js": "^1.8.5",
+    "dotenv": "^16.4.5",
     "pg": "^8.11.5",
-    "dotenv": "^16.4.5"
+    "tmi.js": "^1.8.5"
+  },
+  "devDependencies": {
+    "pm2": "^7.0.3"
   }
 }
