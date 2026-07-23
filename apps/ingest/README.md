@@ -10,7 +10,7 @@ Persistent worker that logs a channel's chat to Postgres, skipping any usernames
 ```
 npm install
 cp .env.example .env   # fill in TWITCH_CHANNEL and DATABASE_URL
-npm run migrate        # creates users, messages, excluded_users tables
+npm run migrate        # creates users, messages, excluded_users, game_rounds tables
 npm start               # connects and starts logging
 ```
 

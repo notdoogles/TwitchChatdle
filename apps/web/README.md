@@ -11,7 +11,9 @@ Uses the same Postgres database the `apps/ingest` worker writes to (the
 author uses Supabase, but any Postgres works, see the root README's
 [Deployment](../../README.md#deployment) section). This app only reads
 `users`/`messages` and adds one table of its own (`game_rounds`) to track
-guesses server-side.
+guesses server-side. `game_rounds` is created by `apps/ingest`'s migration
+(see [`apps/ingest/README.md`](../ingest/README.md#setup)), there's nothing
+to migrate from this app.
 
 ## Setup
 
@@ -19,10 +21,6 @@ guesses server-side.
 npm install
 cp .env.example .env.local   # fill in DATABASE_URL, TWITCH_CHANNEL, GAME_NAME, etc.
 ```
-
-Run `db/schema.sql` once against your Supabase database (SQL editor in the
-Supabase dashboard, or `psql "$DATABASE_URL" -f db/schema.sql`) to create
-`game_rounds`.
 
 ```
 npm run dev
