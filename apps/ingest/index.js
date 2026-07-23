@@ -1,7 +1,14 @@
-import 'dotenv/config';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import dotenv from 'dotenv';
 import tmi from 'tmi.js';
 import pg from 'pg';
 import { isExcluded, mergeExcludedUsernames, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
+
+// .env lives at the repo root, not in this workspace, so load it explicitly
+// rather than relying on dotenv/config's cwd-relative default.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const { Pool } = pg;
 
