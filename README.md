@@ -49,10 +49,11 @@ They're split into two apps because they have different hosting needs:
   log messages as they happen, so it needs an always-on process. It is
   **not** serverless-compatible and won't work on Vercel.
 
-Both apps talk to the same Postgres database: `ingest` populates
-`users`/`messages` (and lets you exclude bots/usernames from being logged
-at all), and `web` reads from those tables and adds its own `game_rounds`
-table to track each day's answer.
+Both apps talk to the same Postgres database: `apps/ingest`'s migration
+creates all four tables (`users`, `messages`, `excluded_users`, and
+`game_rounds`), `ingest` populates `users`/`messages` (and lets you exclude
+bots/usernames from being logged at all), and `web` reads from those
+tables and writes to `game_rounds` to track each day's answer.
 
 See [`apps/web/README.md`](apps/web/README.md) and
 [`apps/ingest/README.md`](apps/ingest/README.md) for full setup
@@ -78,10 +79,11 @@ npm install
 
 Then follow the setup steps in each app's README, in this order:
 
-1. [`apps/ingest`](apps/ingest/README.md): connect to your channel, create
-   the database tables, and start logging chat.
-2. [`apps/web`](apps/web/README.md): point it at the same database, create
-   the `game_rounds` table, and run the game.
+1. [`apps/ingest`](apps/ingest/README.md): connect to your channel, run
+   the migration (creates all database tables, including `web`'s
+   `game_rounds`), and start logging chat.
+2. [`apps/web`](apps/web/README.md): point it at the same database and run
+   the game.
 
 Give `ingest` some time to log real chat before playing. The game needs at
 least 5 unique, readable messages from the same chatter to build a round.

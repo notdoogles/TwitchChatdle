@@ -36,12 +36,44 @@ create table if not exists excluded_users (
   reason text,
   created_at timestamptz not null default now()
 );
+
+-- Owned by apps/web, not apps/ingest, but created here too so a single
+-- migration sets up everything both apps need against a fresh database.
+create table if not exists game_rounds (
+  id uuid primary key,
+  channel text not null,
+  user_id integer not null references users(id),
+  message_ids integer[] not null,
+  guesses_used integer not null default 0,
+  max_guesses integer not null default 5,
+  solved boolean not null default false,
+  -- Calendar day (America/New_York) this round is "today's answer" for.
+  -- One row per channel per day; guess grading is stateless/per-player
+  -- (tracked client-side in localStorage) so this column is what makes
+  -- the daily answer the same for every player until the next midnight EST.
+  game_date date,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_game_rounds_channel on game_rounds(channel);
+
+-- Enforces "one answer per channel per day" -- apps/web's createRound()
+-- does an upsert-style insert against this so concurrent first-visitors of
+-- the day can't create two different daily answers.
+create unique index if not exists idx_game_rounds_channel_date
+  on game_rounds(channel, game_date);
+
+-- Helps the candidate-message query in apps/web/lib/game.ts do less work as
+-- the messages table grows.
+create index if not exists idx_messages_channel_len
+  on messages (channel)
+  include (message_text);
 `;
 
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
-  console.log('Done. Tables ready: users, messages, excluded_users');
+  console.log('Done. Tables ready: users, messages, excluded_users, game_rounds');
   await pool.end();
 }
 
