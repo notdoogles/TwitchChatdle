@@ -102,8 +102,8 @@ async function fetchCandidateMessages(channel: string): Promise<CandidateRow[]> 
   return rows.filter((row) => isIntelligible(row.message_text));
 }
 
-export async function createRound(channel: string): Promise<NewRound> {
-  const gameDate = getGameDate();
+export async function createRound(channel: string, host?: string | null): Promise<NewRound> {
+  const gameDate = getGameDate(new Date(), host);
   const candidates = await fetchCandidateMessages(channel);
   // Kept uncapped here -- the correct answer must always be present in this
   // list for buildNewRoundFromRow to be able to guarantee it survives the
@@ -118,7 +118,7 @@ export async function createRound(channel: string): Promise<NewRound> {
   );
   if (existing.rows.length > 0) {
     const row = existing.rows[0];
-    return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses);
+    return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
   }
 
   if (candidates.length === 0) {
@@ -159,11 +159,11 @@ export async function createRound(channel: string): Promise<NewRound> {
       `select id, message_ids, max_guesses from game_rounds where channel = $1 and game_date = $2`,
       [channel, gameDate]
     );
-    return buildNewRoundFromRow(rows[0].id, gameDate, allUsernames, rows[0].message_ids, rows[0].max_guesses);
+    return buildNewRoundFromRow(rows[0].id, gameDate, allUsernames, rows[0].message_ids, rows[0].max_guesses, host);
   }
 
   const row = inserted.rows[0];
-  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses);
+  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
 }
 
 async function buildNewRoundFromRow(
@@ -171,7 +171,8 @@ async function buildNewRoundFromRow(
   gameDate: string,
   allUsernames: string[],
   messageIds: number[],
-  maxGuesses: number
+  maxGuesses: number,
+  host?: string | null
 ): Promise<NewRound> {
   const { rows } = await pool.query(
     `select m.message_text, u.username
@@ -187,7 +188,7 @@ async function buildNewRoundFromRow(
     message: rows[0]?.message_text ?? '',
     guessesRemaining: maxGuesses,
     maxGuesses,
-    usernameHints: capUsernameHints(allUsernames, correctUsername, getUsernameHintsLimit()),
+    usernameHints: capUsernameHints(allUsernames, correctUsername, getUsernameHintsLimit(host)),
   };
 }
 

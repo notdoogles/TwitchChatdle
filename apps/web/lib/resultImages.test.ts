@@ -75,4 +75,21 @@ describe('getResultImages', () => {
     expect(getResultImages('winners')).toEqual(['/static/winners/only-winner.png']);
     expect(getResultImages('losers')).toEqual([]);
   });
+
+  it('prefers a tenant-specific image folder when it has images', () => {
+    writeFile('public/static/winners/shared.png');
+    writeFile('public/static/tenants/streamer1/winners/tenant-only.png');
+    expect(getResultImages('winners', 'streamer1')).toEqual(['/static/tenants/streamer1/winners/tenant-only.png']);
+  });
+
+  it('falls back to the shared folder when the tenant folder is missing', () => {
+    writeFile('public/static/winners/shared.png');
+    expect(getResultImages('winners', 'streamer1')).toEqual(['/static/winners/shared.png']);
+  });
+
+  it('falls back to the shared folder when the tenant folder is empty', () => {
+    fs.mkdirSync(path.join(tmpDir, 'public', 'static', 'tenants', 'streamer1', 'winners'), { recursive: true });
+    writeFile('public/static/winners/shared.png');
+    expect(getResultImages('winners', 'streamer1')).toEqual(['/static/winners/shared.png']);
+  });
 });
