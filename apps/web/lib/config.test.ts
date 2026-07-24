@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_GAME_NAME,
   DEFAULT_LOSER_MESSAGE,
+  DEFAULT_MAX_MESSAGE_LENGTH,
+  DEFAULT_MAX_MESSAGE_WORDS,
   DEFAULT_RESET_HOUR,
   DEFAULT_RESET_TIMEZONE,
   DEFAULT_USERNAME_HINTS_LIMIT,
@@ -11,6 +13,8 @@ import {
   getGameName,
   getImagesSlug,
   getLoserMessage,
+  getMaxMessageLength,
+  getMaxMessageWords,
   getMsUntilNextGameDate,
   getResetHour,
   getResetTimezone,
@@ -112,6 +116,39 @@ describe('getUsernameHintsLimit', () => {
     expect(getUsernameHintsLimit()).toBe(DEFAULT_USERNAME_HINTS_LIMIT);
     vi.stubEnv('USERNAME_HINTS_LIMIT', 'not-a-number');
     expect(getUsernameHintsLimit()).toBe(DEFAULT_USERNAME_HINTS_LIMIT);
+  });
+});
+
+describe('getMaxMessageLength / getMaxMessageWords', () => {
+  it('default when unset or empty', () => {
+    vi.stubEnv('MAX_MESSAGE_LENGTH', '');
+    vi.stubEnv('MAX_MESSAGE_WORDS', '');
+    expect(getMaxMessageLength()).toBe(DEFAULT_MAX_MESSAGE_LENGTH);
+    expect(getMaxMessageWords()).toBe(DEFAULT_MAX_MESSAGE_WORDS);
+  });
+
+  it('accepts a valid positive integer override', () => {
+    vi.stubEnv('MAX_MESSAGE_LENGTH', '250');
+    vi.stubEnv('MAX_MESSAGE_WORDS', '30');
+    expect(getMaxMessageLength()).toBe(250);
+    expect(getMaxMessageWords()).toBe(30);
+  });
+
+  it('falls back to default for zero, negative, or non-integer values', () => {
+    vi.stubEnv('MAX_MESSAGE_LENGTH', '0');
+    expect(getMaxMessageLength()).toBe(DEFAULT_MAX_MESSAGE_LENGTH);
+    vi.stubEnv('MAX_MESSAGE_LENGTH', '-5');
+    expect(getMaxMessageLength()).toBe(DEFAULT_MAX_MESSAGE_LENGTH);
+    vi.stubEnv('MAX_MESSAGE_WORDS', 'not-a-number');
+    expect(getMaxMessageWords()).toBe(DEFAULT_MAX_MESSAGE_WORDS);
+  });
+
+  it('a tenant override takes priority over the env var', () => {
+    vi.stubEnv('MAX_MESSAGE_LENGTH', '250');
+    vi.stubEnv('MAX_MESSAGE_WORDS', '30');
+    TENANTS['streamer1.example.com'] = { maxMessageLength: 800, maxMessageWords: 100 };
+    expect(getMaxMessageLength('streamer1.example.com')).toBe(800);
+    expect(getMaxMessageWords('streamer1.example.com')).toBe(100);
   });
 });
 
