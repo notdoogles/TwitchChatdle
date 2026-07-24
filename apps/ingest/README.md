@@ -68,10 +68,23 @@ npm run pm2:start            # runs: pm2 start ecosystem.config.cjs
 npx pm2 save                 # persist the process list
 ```
 
-- `npx pm2 status` / `npx pm2 logs ingest` for status and logs.
+- `npx pm2 status` / `npx pm2 logs ingest-<channel>` for status and logs.
 - To survive a VPS reboot without root access to install a systemd
   service, add a line to your **user** crontab (`crontab -e`, no root
   needed):
   ```
   @reboot cd /path/to/apps/ingest && npm run pm2:resurrect
   ```
+
+### Running multiple ingests on the same VPS (e.g. two channels)
+
+PM2 runs one daemon per OS user and identifies apps by name, so if two
+clones (or two checkouts with different `.env`s) both ran `pm2 start
+ecosystem.config.cjs` with the same app name, the second `pm2 start`
+would just restart the first app instead of starting an independent
+process — it looks successful but nothing new actually runs.
+`ecosystem.config.cjs` avoids this by naming the PM2 app
+`ingest-<channel>`, derived from that clone's `TWITCH_CHANNEL`/
+`TWITCH_CHANNELS`, so each clone's `.env` produces a distinct PM2 app
+automatically. Run `npx pm2 status` after starting both to confirm you
+see two separate entries.
