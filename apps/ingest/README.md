@@ -5,6 +5,16 @@
 
 Persistent worker that logs a channel's chat to Postgres, skipping any usernames you don't want logged.
 
+## Multi-streamer setup
+
+One worker can log chat for several streamers into the same database:
+set `TWITCH_CHANNELS=streamer1,streamer2` (comma-separated) instead of
+`TWITCH_CHANNEL`. This joins all channels over a single IRC connection
+via `tmi.js` and tags each message with its own `channel`, matching the
+per-channel filtering already used by `apps/web` (see the root README's
+multi-tenant section for the web-side setup). `TWITCH_CHANNEL` remains
+the default for a single-streamer fork and needs no changes.
+
 ## Setup
 
 ```
