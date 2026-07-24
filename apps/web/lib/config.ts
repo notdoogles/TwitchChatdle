@@ -113,13 +113,33 @@ function localPartsAsUtcMs(now: Date, timeZone: string): number {
   );
 }
 
+export interface ResetConfigOverrides {
+  resetHour?: number;
+  resetTimezone?: string;
+}
+
+// `RESET_HOUR`/`RESET_TIMEZONE` are plain (non-`NEXT_PUBLIC_`) env vars, so
+// they're only readable server-side -- in the browser bundle
+// `process.env.RESET_TIMEZONE` is always undefined and getResetHour()/
+// getResetTimezone() silently fall back to the defaults. Client callers
+// (GameBoard.tsx) must therefore pass the values resolved server-side
+// (see app/page.tsx) via `overrides` instead of relying on the `host`
+// lookup alone.
+function resolveResetConfig(host?: string | null, overrides?: ResetConfigOverrides) {
+  return {
+    resetHour: overrides?.resetHour ?? getResetHour(host),
+    resetTimezone: overrides?.resetTimezone ?? getResetTimezone(host),
+  };
+}
+
 // Today's puzzle date, formatted YYYY-MM-DD, using `getResetTimezone()` and
 // shifted so the calendar day rolls over at `getResetHour()` instead of
 // midnight. Everyone who requests a round on the same "game day" gets the
 // same answer, and it changes automatically at the configured reset time
 // regardless of the visitor's own timezone.
-export function getGameDate(now: Date = new Date(), host?: string | null): string {
-  const shiftedMs = localPartsAsUtcMs(now, getResetTimezone(host)) - getResetHour(host) * 3600_000;
+export function getGameDate(now: Date = new Date(), host?: string | null, overrides?: ResetConfigOverrides): string {
+  const { resetHour, resetTimezone } = resolveResetConfig(host, overrides);
+  const shiftedMs = localPartsAsUtcMs(now, resetTimezone) - resetHour * 3600_000;
   const shifted = new Date(shiftedMs);
   const year = shifted.getUTCFullYear();
   const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
@@ -129,9 +149,10 @@ export function getGameDate(now: Date = new Date(), host?: string | null): strin
 
 // Milliseconds until the next game-day rollover (the next occurrence of
 // `getResetHour()` in `getResetTimezone()`), for the client-side countdown.
-export function getMsUntilNextGameDate(now: Date = new Date(), host?: string | null): number {
-  const resetSeconds = getResetHour(host) * 3600;
-  const nowMs = localPartsAsUtcMs(now, getResetTimezone(host));
+export function getMsUntilNextGameDate(now: Date = new Date(), host?: string | null, overrides?: ResetConfigOverrides): number {
+  const { resetHour, resetTimezone } = resolveResetConfig(host, overrides);
+  const resetSeconds = resetHour * 3600;
+  const nowMs = localPartsAsUtcMs(now, resetTimezone);
   const secondsSinceMidnight = Math.floor((nowMs % 86_400_000) / 1000);
   const secondsSinceReset = ((secondsSinceMidnight - resetSeconds) % 86400 + 86400) % 86400;
   return Math.max(0, 86400 - secondsSinceReset) * 1000;

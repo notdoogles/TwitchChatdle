@@ -20,6 +20,10 @@ interface GameBoardProps {
   loserMessage?: string;
   winnerImages?: string[];
   loserImages?: string[];
+  // Resolved server-side (app/page.tsx) since RESET_HOUR/RESET_TIMEZONE
+  // are plain env vars and unreadable from the client bundle.
+  resetHour?: number;
+  resetTimezone?: string;
 }
 
 interface StoredState {
@@ -100,6 +104,8 @@ export default function GameBoard({
   loserMessage = DEFAULT_LOSER_MESSAGE,
   winnerImages = [],
   loserImages = [],
+  resetHour,
+  resetTimezone,
 }: GameBoardProps) {
   const storagePrefix = `${slugify(gameName)}:`;
   const [status, setStatus] = useState<Status>('loading');
@@ -131,7 +137,7 @@ export default function GameBoard({
     setStatus('loading');
     setErrorMsg(null);
     try {
-      const today = getGameDate(new Date(), window.location.hostname);
+      const today = getGameDate(new Date(), window.location.hostname, { resetHour, resetTimezone });
       cleanupOldEntries(storagePrefix, today);
 
       const res = await fetch('/api/game/new', { method: 'POST' });
@@ -219,7 +225,7 @@ export default function GameBoard({
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
       setStatus('error');
     }
-  }, [storagePrefix, winnerImages, loserImages]);
+  }, [storagePrefix, winnerImages, loserImages, resetHour, resetTimezone]);
 
   useEffect(() => {
     loadToday();
@@ -228,11 +234,11 @@ export default function GameBoard({
   // Countdown to the next midnight EST, shown once today's game is over.
   useEffect(() => {
     if (status !== 'won' && status !== 'lost') return;
-    const tick = () => setCountdown(formatCountdown(getMsUntilNextGameDate(new Date(), window.location.hostname)));
+    const tick = () => setCountdown(formatCountdown(getMsUntilNextGameDate(new Date(), window.location.hostname, { resetHour, resetTimezone })));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [status]);
+  }, [status, resetHour, resetTimezone]);
 
   // Keep the newest revealed message in view when the chat log scrolls
   // internally (long messages can overflow its capped height). When the
