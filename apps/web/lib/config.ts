@@ -55,8 +55,8 @@ export function getUsernameHintsLimit(host?: string | null): number {
 // walls of text being picked as the round's answer -- a technically
 // "unique" and "readable" message can still be too long to make for a fun
 // guessing round. Same override precedence as the other getters above.
-export const DEFAULT_MAX_MESSAGE_LENGTH = 500;
-export const DEFAULT_MAX_MESSAGE_WORDS = 60;
+export const DEFAULT_MAX_MESSAGE_LENGTH = 150;
+export const DEFAULT_MAX_MESSAGE_WORDS = 30;
 
 export function getMaxMessageLength(host?: string | null): number {
   const override = getTenantOverrides(host).maxMessageLength;
