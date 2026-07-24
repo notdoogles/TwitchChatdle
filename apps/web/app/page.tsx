@@ -1,7 +1,7 @@
 import { headers } from 'next/headers';
 import GameBoard from '@/components/GameBoard';
 import ThemeToggle from '@/components/ThemeToggle';
-import { getGameName, getImagesSlug, getLoserMessage, getWinnerMessage } from '@/lib/config';
+import { getGameName, getImagesSlug, getLoserMessage, getResetHour, getResetTimezone, getWinnerMessage } from '@/lib/config';
 import { getResultImages } from '@/lib/resultImages';
 import styles from './page.module.css';
 
@@ -24,6 +24,8 @@ export default function Home() {
         loserMessage={getLoserMessage(host)}
         winnerImages={getResultImages('winners', imagesSlug)}
         loserImages={getResultImages('losers', imagesSlug)}
+        resetHour={getResetHour(host)}
+        resetTimezone={getResetTimezone(host)}
       />
     </main>
   );
