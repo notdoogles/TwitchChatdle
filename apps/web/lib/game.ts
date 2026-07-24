@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { pool } from './db';
 import { isIntelligible } from './textFilters';
-import { getGameDate, getUsernameHintsLimit } from './config';
+import { getGameDate, getMaxMessageLength, getMaxMessageWords, getUsernameHintsLimit } from './config';
 
 export const MAX_GUESSES = 5;
 const MIN_MESSAGES_PER_ROUND = MAX_GUESSES;
@@ -71,7 +71,7 @@ function seededShuffle<T>(arr: T[], rng: () => number): T[] {
 // GROUP BY/COUNT rather than an external bot -- and (b) passes the
 // intelligibility heuristic (see lib/textFilters.ts). Length >= 12 is
 // pushed into SQL to cut down rows before the JS filter runs.
-async function fetchCandidateMessages(channel: string): Promise<CandidateRow[]> {
+async function fetchCandidateMessages(channel: string, host?: string | null): Promise<CandidateRow[]> {
   const { rows } = await pool.query<CandidateRow>(
     `
     with normalized as (
@@ -99,12 +99,14 @@ async function fetchCandidateMessages(channel: string): Promise<CandidateRow[]> 
     [channel]
   );
 
-  return rows.filter((row) => isIntelligible(row.message_text));
+  const maxLength = getMaxMessageLength(host);
+  const maxTokens = getMaxMessageWords(host);
+  return rows.filter((row) => isIntelligible(row.message_text, { maxLength, maxTokens }));
 }
 
 export async function createRound(channel: string, host?: string | null): Promise<NewRound> {
   const gameDate = getGameDate(new Date(), host);
-  const candidates = await fetchCandidateMessages(channel);
+  const candidates = await fetchCandidateMessages(channel, host);
   // Kept uncapped here -- the correct answer must always be present in this
   // list for buildNewRoundFromRow to be able to guarantee it survives the
   // cap applied below.
