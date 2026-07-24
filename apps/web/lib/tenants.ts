@@ -17,6 +17,8 @@ export interface TenantOverrides {
   resetHour?: number;
   resetTimezone?: string;
   usernameHintsLimit?: number;
+  maxMessageLength?: number;
+  maxMessageWords?: number;
   // Subfolder under public/static/tenants/ to read winner/loser images
   // from. Falls back to the shared public/static/winners|losers/
   // directories when omitted or when the tenant folder doesn't exist.

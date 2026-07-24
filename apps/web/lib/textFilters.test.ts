@@ -59,4 +59,24 @@ describe('isIntelligible', () => {
     expect(isIntelligible(mixed, { minWordRatio: 0.1 })).toBe(true);
     expect(isIntelligible(mixed, { minWordRatio: 0.9 })).toBe(false);
   });
+
+  it('rejects messages longer than the default maxLength', () => {
+    expect(isIntelligible('a '.repeat(300))).toBe(false);
+  });
+
+  it('respects a custom maxLength option', () => {
+    const text = 'this is a perfectly normal chat message';
+    expect(isIntelligible(text, { maxLength: 5 })).toBe(false);
+    expect(isIntelligible(text, { maxLength: 100 })).toBe(true);
+  });
+
+  it('rejects messages with more tokens than the default maxTokens', () => {
+    expect(isIntelligible('word '.repeat(61).trim())).toBe(false);
+  });
+
+  it('respects a custom maxTokens option', () => {
+    const text = 'this is a perfectly normal chat message';
+    expect(isIntelligible(text, { maxTokens: 3 })).toBe(false);
+    expect(isIntelligible(text, { maxTokens: 20 })).toBe(true);
+  });
 });

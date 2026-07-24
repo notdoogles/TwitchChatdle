@@ -29,26 +29,32 @@ export interface IntelligibilityOptions {
   minLength?: number;
   minTokens?: number;
   minWordRatio?: number;
+  maxLength?: number;
+  maxTokens?: number;
 }
 
 const DEFAULTS: Required<IntelligibilityOptions> = {
   minLength: 12,
   minTokens: 3,
   minWordRatio: 0.6,
+  maxLength: 150,
+  maxTokens: 30,
 };
 
 // Rejects messages that are too short, link-only, or mostly emotes/symbols,
 // so the game only surfaces messages a guesser could plausibly read and
-// vibe-match to a person, rather than spam or an emote spread.
+// vibe-match to a person, rather than spam or an emote spread. Also rejects
+// messages that are too long (copypasta walls of text make for an
+// unreadable/unfair round) via maxLength/maxTokens.
 export function isIntelligible(rawText: string, options: IntelligibilityOptions = {}): boolean {
-  const { minLength, minTokens, minWordRatio } = { ...DEFAULTS, ...options };
+  const { minLength, minTokens, minWordRatio, maxLength, maxTokens } = { ...DEFAULTS, ...options };
   const text = rawText.trim();
 
-  if (text.length < minLength) return false;
+  if (text.length < minLength || text.length > maxLength) return false;
   if (/^https?:\/\//i.test(text)) return false;
 
   const tokens = text.split(/\s+/).filter(Boolean);
-  if (tokens.length < minTokens) return false;
+  if (tokens.length < minTokens || tokens.length > maxTokens) return false;
 
   const wordTokens = tokens.filter((t) => {
     const clean = t.replace(/[^\w']/g, '');

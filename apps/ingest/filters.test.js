@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isExcluded, mergeExcludedUsernames, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
+import { isExcluded, mergeExcludedUsernames, parseChannels, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
 
 test('parseExcludedFromEnv', () => {
   assert.deepEqual(parseExcludedFromEnv('nightbot, StreamElements ,some_user'), [
@@ -14,6 +14,20 @@ test('parseExcludedFromEnv handles empty/undefined input', () => {
   assert.deepEqual(parseExcludedFromEnv(undefined), []);
   assert.deepEqual(parseExcludedFromEnv(''), []);
   assert.deepEqual(parseExcludedFromEnv('  ,, '), []);
+});
+
+test('parseChannels prefers TWITCH_CHANNELS when set, lowercased and deduped', () => {
+  assert.deepEqual(parseChannels('Streamer1, streamer2 ,streamer1', 'fallback'), ['streamer1', 'streamer2']);
+});
+
+test('parseChannels falls back to the single TWITCH_CHANNEL value', () => {
+  assert.deepEqual(parseChannels(undefined, 'SomeChannel'), ['somechannel']);
+  assert.deepEqual(parseChannels('', 'SomeChannel'), ['somechannel']);
+});
+
+test('parseChannels returns an empty array when neither env var is set', () => {
+  assert.deepEqual(parseChannels(undefined, undefined), []);
+  assert.deepEqual(parseChannels('  ,, ', ''), []);
 });
 
 test('mergeExcludedUsernames dedupes and lowercases both sources', () => {

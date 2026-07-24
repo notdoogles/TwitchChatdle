@@ -50,6 +50,34 @@ export function getUsernameHintsLimit(host?: string | null): number {
   return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_USERNAME_HINTS_LIMIT;
 }
 
+// Caps on individual message length/word count fed into
+// isIntelligible() (see lib/textFilters.ts): guards against copypasta
+// walls of text being picked as the round's answer -- a technically
+// "unique" and "readable" message can still be too long to make for a fun
+// guessing round. Same override precedence as the other getters above.
+export const DEFAULT_MAX_MESSAGE_LENGTH = 150;
+export const DEFAULT_MAX_MESSAGE_WORDS = 30;
+
+export function getMaxMessageLength(host?: string | null): number {
+  const override = getTenantOverrides(host).maxMessageLength;
+  if (Number.isInteger(override) && (override as number) > 0) return override as number;
+
+  const raw = process.env.MAX_MESSAGE_LENGTH;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_MAX_MESSAGE_LENGTH;
+  const limit = Number(raw);
+  return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_MAX_MESSAGE_LENGTH;
+}
+
+export function getMaxMessageWords(host?: string | null): number {
+  const override = getTenantOverrides(host).maxMessageWords;
+  if (Number.isInteger(override) && (override as number) > 0) return override as number;
+
+  const raw = process.env.MAX_MESSAGE_WORDS;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_MAX_MESSAGE_WORDS;
+  const limit = Number(raw);
+  return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_MAX_MESSAGE_WORDS;
+}
+
 // Slug used for client-side storage keys (localStorage), derived from the
 // game name so different deployments don't collide in a shared browser.
 export function slugify(name: string): string {
