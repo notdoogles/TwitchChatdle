@@ -3,7 +3,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import tmi from 'tmi.js';
 import pg from 'pg';
-import { isExcluded, mergeExcludedUsernames, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
+import { isExcluded, mergeExcludedUsernames, parseChannels, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
 
 // .env lives at the repo root, not in this workspace, so load it explicitly
 // rather than relying on dotenv/config's cwd-relative default.
@@ -12,12 +12,17 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const { Pool } = pg;
 
-const CHANNEL = process.env.TWITCH_CHANNEL;
+// TWITCH_CHANNELS (comma-separated) lets one worker log chat for several
+// streamers into the same DB; TWITCH_CHANNEL remains the single-channel
+// default. tmi.js natively supports joining multiple channels over one IRC
+// connection, and every message handler below already receives the
+// per-message channel, so no other logic needs to branch on channel count.
+const CHANNELS = parseChannels(process.env.TWITCH_CHANNELS, process.env.TWITCH_CHANNEL);
 const SKIP_COMMANDS = (process.env.SKIP_COMMANDS ?? 'true').toLowerCase() === 'true';
 const EXCLUDED_REFRESH_MS = 60_000;
 
-if (!CHANNEL) {
-  console.error('Missing TWITCH_CHANNEL in .env');
+if (CHANNELS.length === 0) {
+  console.error('Missing TWITCH_CHANNEL (or TWITCH_CHANNELS) in .env');
   process.exit(1);
 }
 if (!process.env.DATABASE_URL) {
@@ -75,7 +80,7 @@ async function insertMessage(userId, channel, text) {
 
 const client = new tmi.Client({
   connection: { reconnect: true, secure: true },
-  channels: [CHANNEL],
+  channels: CHANNELS,
 });
 
 client.on('message', async (channel, tags, message, self) => {
@@ -94,7 +99,7 @@ client.on('message', async (channel, tags, message, self) => {
 });
 
 client.on('connected', (addr, port) => {
-  console.log(`Connected to Twitch IRC at ${addr}:${port}, watching #${CHANNEL}`);
+  console.log(`Connected to Twitch IRC at ${addr}:${port}, watching ${CHANNELS.map((c) => `#${c}`).join(', ')}`);
 });
 
 async function main() {
