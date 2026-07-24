@@ -26,11 +26,15 @@ export interface TenantOverrides {
 }
 
 export const TENANTS: Record<string, TenantOverrides> = {
-  // 'streamer1.example.com': {
-  //   channel: 'streamer1',
-  //   gameName: 'Streamer1dle',
-  //   imagesSlug: 'streamer1',
-  // },
+  'whisqeydle.doogl.es': {
+    channel: 'whisqey',
+    gameName: 'Whisqeydle',
+  },
+  'hannerdle.doogl.es': {
+    channel: 'hanner',
+    gameName: 'Hannerdle',
+    imagesSlug: 'hanner',
+  },
 };
 
 // Hostnames may arrive with a port (e.g. "localhost:3000") or mixed case;
