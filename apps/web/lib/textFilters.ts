@@ -37,8 +37,8 @@ const DEFAULTS: Required<IntelligibilityOptions> = {
   minLength: 12,
   minTokens: 3,
   minWordRatio: 0.6,
-  maxLength: 500,
-  maxTokens: 60,
+  maxLength: 150,
+  maxTokens: 30,
 };
 
 // Rejects messages that are too short, link-only, or mostly emotes/symbols,
