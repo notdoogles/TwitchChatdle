@@ -24,6 +24,23 @@ export function isExcluded(username, excludedSet) {
   return excludedSet.has(username.toLowerCase());
 }
 
+// Resolves the list of channels the worker should join: TWITCH_CHANNELS
+// (comma-separated) takes priority for running one worker across multiple
+// streamers sharing a DB; TWITCH_CHANNEL is the single-channel default so
+// existing single-streamer setups need zero config changes. Lowercased and
+// deduped since Twitch channel names are case-insensitive and the
+// `messages.channel` column is always written lowercase (see index.js).
+export function parseChannels(channelsEnv, channelEnv) {
+  const multi = (channelsEnv ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (multi.length > 0) return [...new Set(multi)];
+
+  const single = (channelEnv ?? '').trim().toLowerCase();
+  return single ? [single] : [];
+}
+
 // Decides whether an incoming chat message should be skipped before it's
 // ever logged: messages the bot's own account sent (self), and, when
 // skipCommands is enabled, messages starting with "!".
