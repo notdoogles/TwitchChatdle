@@ -113,10 +113,12 @@ async function fetchCandidateMessages(channel: string, host?: string | null): Pr
 export async function createRound(channel: string, host?: string | null): Promise<NewRound> {
   const gameDate = getGameDate(new Date(), host);
   const candidates = await fetchCandidateMessages(channel, host);
-  // Kept uncapped here -- the correct answer must always be present in this
-  // list for buildNewRoundFromRow to be able to guarantee it survives the
-  // cap applied below.
-  const allUsernames = [...new Set(candidates.map((c) => c.username))].sort();
+  const eligible = computeEligibleChatters(candidates, host);
+  // Hints are built from the same eligible (min-messages + top-chatters-limit
+  // capped) pool the answer is picked from -- see computeEligibleChatters --
+  // so the hint list never includes a chatter who could never be the answer,
+  // and never omits one who could.
+  const allUsernames = eligible.map(([, msgs]) => msgs[0].username).sort();
 
   const existing = await pool.query(
     `select gr.id, gr.message_ids, gr.max_guesses
@@ -129,7 +131,7 @@ export async function createRound(channel: string, host?: string | null): Promis
     return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
   }
 
-  const { userId, chosen } = pickRoundCandidate(candidates, roundSeed(channel, gameDate, 0), host);
+  const { userId, chosen } = pickRoundCandidate(eligible, roundSeed(channel, gameDate, 0));
 
   const roundId = crypto.randomUUID();
   const inserted = await pool.query(
@@ -161,14 +163,15 @@ export async function createRound(channel: string, host?: string | null): Promis
 export async function rerollRound(channel: string, host?: string | null): Promise<NewRound> {
   const gameDate = getGameDate(new Date(), host);
   const candidates = await fetchCandidateMessages(channel, host);
-  const allUsernames = [...new Set(candidates.map((c) => c.username))].sort();
+  const eligible = computeEligibleChatters(candidates, host);
+  const allUsernames = eligible.map(([, msgs]) => msgs[0].username).sort();
 
   const existing = await pool.query<{ variant: number }>(
     `select variant from game_rounds where channel = $1 and game_date = $2`,
     [channel, gameDate]
   );
   const nextVariant = (existing.rows[0]?.variant ?? -1) + 1;
-  const { userId, chosen } = pickRoundCandidate(candidates, roundSeed(channel, gameDate, nextVariant), host);
+  const { userId, chosen } = pickRoundCandidate(eligible, roundSeed(channel, gameDate, nextVariant));
 
   const roundId = crypto.randomUUID();
   const { rows } = await pool.query(
@@ -197,15 +200,15 @@ function roundSeed(channel: string, gameDate: string, variant: number): string {
   return variant > 0 ? `${channel}:${gameDate}:${variant}` : `${channel}:${gameDate}`;
 }
 
-interface PickedRound {
-  userId: number;
-  chosen: CandidateRow[];
-}
+type EligibleChatters = [number, CandidateRow[]][];
 
-// Shared by createRound/rerollRound: groups candidates by chatter, applies
-// the min-eligible-messages and top-chatters-limit filters, then makes the
-// seeded pick. Throws if there's no eligible pool at all.
-function pickRoundCandidate(candidates: CandidateRow[], seed: string, host?: string | null): PickedRound {
+// Groups candidates by chatter and applies the min-eligible-messages and
+// top-chatters-limit filters -- the exact pool a round's answer can be
+// picked from. Shared by createRound/rerollRound (for the RNG pick) and by
+// the username hint list, so the hints can never include a chatter who
+// couldn't actually be the answer (e.g. one excluded by
+// getTopChattersLimit()) nor omit one who could.
+function computeEligibleChatters(candidates: CandidateRow[], host?: string | null): EligibleChatters {
   if (candidates.length === 0) {
     throw new Error('No candidate messages yet -- let the channel chat a bit more first.');
   }
@@ -233,6 +236,17 @@ function pickRoundCandidate(candidates: CandidateRow[], seed: string, host?: str
   }
   eligible.sort((a, b) => a[0] - b[0]); // stable order so the seeded pick below is reproducible
 
+  return eligible;
+}
+
+interface PickedRound {
+  userId: number;
+  chosen: CandidateRow[];
+}
+
+// Makes the seeded pick from an already-filtered/capped eligible pool (see
+// computeEligibleChatters).
+function pickRoundCandidate(eligible: EligibleChatters, seed: string): PickedRound {
   const rng = mulberry32(seedFromString(seed));
   const [userId, userMessages] = eligible[Math.floor(rng() * eligible.length)];
   const shuffled = seededShuffle(userMessages, rng);
