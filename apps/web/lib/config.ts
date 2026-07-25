@@ -78,6 +78,22 @@ export function getMaxMessageWords(host?: string | null): number {
   return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_MAX_MESSAGE_WORDS;
 }
 
+// Caps the pool of chatters eligible to be picked as a round's answer to
+// the channel's top N by eligible (unique + intelligible) message count.
+// Useful for very active channels where an obscure lurker with just barely
+// enough messages could otherwise get picked as often as a regular.
+// Unset/0 means no cap -- every chatter with enough eligible messages is
+// eligible, same as before this setting existed.
+export function getTopChattersLimit(host?: string | null): number | undefined {
+  const override = getTenantOverrides(host).topChattersLimit;
+  if (Number.isInteger(override) && (override as number) > 0) return override as number;
+
+  const raw = process.env.TOP_CHATTERS_LIMIT;
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const limit = Number(raw);
+  return Number.isInteger(limit) && limit > 0 ? limit : undefined;
+}
+
 // Slug used for client-side storage keys (localStorage), derived from the
 // game name so different deployments don't collide in a shared browser.
 export function slugify(name: string): string {

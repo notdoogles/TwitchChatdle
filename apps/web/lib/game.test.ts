@@ -16,6 +16,12 @@ interface CandidateRow {
   message_text: string;
 }
 
+interface GameRoundRow {
+  id: string;
+  message_ids: number[];
+  max_guesses: number;
+}
+
 // A message long/varied enough to pass lib/textFilters.isIntelligible.
 function msg(text: string): string {
   return text;
@@ -41,13 +47,13 @@ function messageMapFrom(rows: CandidateRow[]): Map<number, string> {
 function setupCreateRoundMocks(
   candidateRows: CandidateRow[],
   {
-    existingRoundRows = [] as any[],
-    raceFallbackRows = [] as any[],
+    existingRoundRows = [] as GameRoundRow[],
+    raceFallbackRows = [] as GameRoundRow[],
   } = {}
 ) {
   const messagesById = messageMapFrom(candidateRows);
   const usernamesById = new Map(candidateRows.map((r) => [r.id, r.username]));
-  mockedQuery.mockImplementation(async (sql: string, params: any[]) => {
+  mockedQuery.mockImplementation(async (sql: string, params: unknown[]) => {
     if (sql.includes('with normalized as')) {
       return { rows: candidateRows };
     }
@@ -55,7 +61,7 @@ function setupCreateRoundMocks(
       return { rows: existingRoundRows };
     }
     if (sql.includes('insert into game_rounds')) {
-      const [id, , , messageIds, maxGuesses] = params;
+      const [id, , , messageIds, maxGuesses] = params as [string, string, number, number[], number];
       if (raceFallbackRows.length > 0) {
         // Simulate another request winning the unique-constraint race.
         return { rows: [] };
@@ -66,7 +72,7 @@ function setupCreateRoundMocks(
       return { rows: raceFallbackRows };
     }
     if (sql.includes('from messages m') && sql.includes('join users u')) {
-      const id = params[0];
+      const id = params[0] as number;
       return { rows: [{ message_text: messagesById.get(id) ?? null, username: usernamesById.get(id) ?? null }] };
     }
     throw new Error(`Unexpected query in createRound test: ${sql}`);
@@ -159,6 +165,24 @@ describe('createRound', () => {
     expect(round.usernameHints).toHaveLength(3);
     vi.unstubAllEnvs();
   });
+
+  it('restricts the answer to the top N chatters by eligible message count when TOP_CHATTERS_LIMIT is set', async () => {
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '1');
+    // alice has more eligible messages than bob, so with a cap of 1 only
+    // alice should ever be pickable as the answer.
+    const rows = [...candidatesForUser(1, 'alice', 8), ...candidatesForUser(2, 'bob', 5)];
+    setupCreateRoundMocks(rows);
+    const round = await createRound('somechannel');
+    expect(round.message).toMatch(/from alice/);
+    vi.unstubAllEnvs();
+  });
+
+  it('does not restrict the answer pool when TOP_CHATTERS_LIMIT is unset', async () => {
+    const rows = [...candidatesForUser(1, 'alice', 8), ...candidatesForUser(2, 'bob', 5)];
+    setupCreateRoundMocks(rows);
+    const round = await createRound('somechannel');
+    expect(round.usernameHints).toEqual(['alice', 'bob']);
+  });
 });
 
 function setupSubmitGuessMocks(round: {
@@ -166,12 +190,12 @@ function setupSubmitGuessMocks(round: {
   max_guesses: number;
   username: string;
 } | null, messagesById: Map<number, string>) {
-  mockedQuery.mockImplementation(async (sql: string, params: any[]) => {
+  mockedQuery.mockImplementation(async (sql: string, params: unknown[]) => {
     if (sql.includes('join users u')) {
       return { rows: round ? [round] : [] };
     }
     if (sql.trim() === 'select message_text from messages where id = $1') {
-      const id = params[0];
+      const id = params[0] as number;
       return { rows: [{ message_text: messagesById.get(id) ?? null }] };
     }
     throw new Error(`Unexpected query in submitGuess test: ${sql}`);

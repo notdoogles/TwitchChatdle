@@ -1,7 +1,13 @@
 import crypto from 'crypto';
 import { pool } from './db';
 import { isIntelligible } from './textFilters';
-import { getGameDate, getMaxMessageLength, getMaxMessageWords, getUsernameHintsLimit } from './config';
+import {
+  getGameDate,
+  getMaxMessageLength,
+  getMaxMessageWords,
+  getTopChattersLimit,
+  getUsernameHintsLimit,
+} from './config';
 
 export const MAX_GUESSES = 5;
 const MIN_MESSAGES_PER_ROUND = MAX_GUESSES;
@@ -134,12 +140,21 @@ export async function createRound(channel: string, host?: string | null): Promis
     byUser.set(row.user_id, list);
   }
 
-  const eligible = [...byUser.entries()]
-    .filter(([, msgs]) => msgs.length >= MIN_MESSAGES_PER_ROUND)
-    .sort((a, b) => a[0] - b[0]); // stable order so the seeded pick below is reproducible
+  let eligible = [...byUser.entries()].filter(([, msgs]) => msgs.length >= MIN_MESSAGES_PER_ROUND);
   if (eligible.length === 0) {
     throw new Error('No chatter has enough unique, readable messages yet.');
   }
+
+  // Caps the answer pool to the channel's top N chatters by eligible
+  // message count (see getTopChattersLimit()). Ranked by message count
+  // with user_id as a tiebreaker so the cut is deterministic regardless of
+  // the candidates query's row order, then re-sorted by user_id so the
+  // seeded pick below stays reproducible.
+  const topChattersLimit = getTopChattersLimit(host);
+  if (topChattersLimit && eligible.length > topChattersLimit) {
+    eligible = eligible.sort((a, b) => b[1].length - a[1].length || a[0] - b[0]).slice(0, topChattersLimit);
+  }
+  eligible.sort((a, b) => a[0] - b[0]); // stable order so the seeded pick below is reproducible
 
   const rng = mulberry32(seedFromString(`${channel}:${gameDate}`));
   const [userId, userMessages] = eligible[Math.floor(rng() * eligible.length)];
