@@ -74,8 +74,9 @@ behavior is identical to the single-tenant setup above.
 1. Push this folder to a GitHub repo, import it in Vercel.
 2. In the Vercel project settings, add env vars: `DATABASE_URL`,
    `TWITCH_CHANNEL`, and optionally `GAME_NAME`, `WINNER_MESSAGE`,
-   `LOSER_MESSAGE`, `RESET_HOUR`, `RESET_TIMEZONE`, and
-   `USERNAME_HINTS_LIMIT` (see `.env.example` for defaults).
+   `LOSER_MESSAGE`, `RESET_HOUR`, `RESET_TIMEZONE`,
+   `USERNAME_HINTS_LIMIT`, and `TOP_CHATTERS_LIMIT` (see `.env.example` for
+   defaults).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
    connection string (port `6543`), not the direct connection -- Vercel's
    serverless functions open a lot of short-lived connections and the
@@ -101,6 +102,13 @@ Two filters run every time a round starts (`lib/game.ts`):
 
 A round only picks chatters who have at least 5 messages passing both
 filters, and always shows exactly 5 of them.
+
+Set `TOP_CHATTERS_LIMIT` to further cap which chatters can be picked as a
+round's answer, to the channel's top N by eligible message count. This is
+optional (unset means no cap) and useful for very active channels, so a
+lurker with just barely enough eligible messages isn't picked as often as a
+regular. It only affects who can be the *answer* -- the autocomplete hint
+list (see `USERNAME_HINTS_LIMIT` below) is unaffected.
 
 ## Daily reset time
 

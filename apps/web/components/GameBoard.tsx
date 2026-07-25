@@ -451,7 +451,7 @@ export default function GameBoard({
         </form>
       )}
 
-      {status === 'loading' && <div className={styles.loading}>Loading today's message…</div>}
+      {status === 'loading' && <div className={styles.loading}>Loading today&apos;s message…</div>}
 
       {isOver && (
         <div className={styles.results}>

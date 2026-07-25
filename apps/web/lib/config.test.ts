@@ -18,6 +18,7 @@ import {
   getMsUntilNextGameDate,
   getResetHour,
   getResetTimezone,
+  getTopChattersLimit,
   getUsernameHintsLimit,
   getWinnerMessage,
   slugify,
@@ -116,6 +117,33 @@ describe('getUsernameHintsLimit', () => {
     expect(getUsernameHintsLimit()).toBe(DEFAULT_USERNAME_HINTS_LIMIT);
     vi.stubEnv('USERNAME_HINTS_LIMIT', 'not-a-number');
     expect(getUsernameHintsLimit()).toBe(DEFAULT_USERNAME_HINTS_LIMIT);
+  });
+});
+
+describe('getTopChattersLimit', () => {
+  it('returns undefined when unset or empty', () => {
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '');
+    expect(getTopChattersLimit()).toBeUndefined();
+  });
+
+  it('accepts a valid positive integer override', () => {
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '50');
+    expect(getTopChattersLimit()).toBe(50);
+  });
+
+  it('returns undefined for zero, negative, or non-integer values', () => {
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '0');
+    expect(getTopChattersLimit()).toBeUndefined();
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '-5');
+    expect(getTopChattersLimit()).toBeUndefined();
+    vi.stubEnv('TOP_CHATTERS_LIMIT', 'not-a-number');
+    expect(getTopChattersLimit()).toBeUndefined();
+  });
+
+  it('a tenant override takes priority over the env var', () => {
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '50');
+    TENANTS['streamer1.example.com'] = { topChattersLimit: 20 };
+    expect(getTopChattersLimit('streamer1.example.com')).toBe(20);
   });
 });
 
