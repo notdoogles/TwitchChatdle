@@ -78,6 +78,15 @@ export function getMaxMessageWords(host?: string | null): number {
   return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_MAX_MESSAGE_WORDS;
 }
 
+// Secret required (via the `x-admin-secret` header) to call the
+// /api/game/reroll admin endpoint. Deliberately not a tenant override --
+// tenants.ts is committed to source control, so secrets don't belong there.
+// Unset means the endpoint is unreachable (see the route handler), not
+// "open to anyone".
+export function getAdminSecret(): string | undefined {
+  return process.env.ADMIN_SECRET?.trim() || undefined;
+}
+
 // Caps the pool of chatters eligible to be picked as a round's answer to
 // the channel's top N by eligible (unique + intelligible) message count.
 // Useful for very active channels where an obscure lurker with just barely

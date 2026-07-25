@@ -5,7 +5,7 @@ vi.mock('./db', () => ({
 }));
 
 import { pool } from './db';
-import { createRound, submitGuess } from './game';
+import { createRound, rerollRound, submitGuess } from './game';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -76,6 +76,28 @@ function setupCreateRoundMocks(
       return { rows: [{ message_text: messagesById.get(id) ?? null, username: usernamesById.get(id) ?? null }] };
     }
     throw new Error(`Unexpected query in createRound test: ${sql}`);
+  });
+}
+
+function setupRerollRoundMocks(candidateRows: CandidateRow[], { existingVariant }: { existingVariant?: number } = {}) {
+  const messagesById = messageMapFrom(candidateRows);
+  const usernamesById = new Map(candidateRows.map((r) => [r.id, r.username]));
+  mockedQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+    if (sql.includes('with normalized as')) {
+      return { rows: candidateRows };
+    }
+    if (sql.trim().startsWith('select variant from game_rounds')) {
+      return { rows: existingVariant === undefined ? [] : [{ variant: existingVariant }] };
+    }
+    if (sql.includes('insert into game_rounds') && sql.includes('on conflict (channel, game_date) do update')) {
+      const [id, , , messageIds, maxGuesses] = params as [string, string, number, number[], number];
+      return { rows: [{ id, message_ids: messageIds, max_guesses: maxGuesses }] };
+    }
+    if (sql.includes('from messages m') && sql.includes('join users u')) {
+      const id = params[0] as number;
+      return { rows: [{ message_text: messagesById.get(id) ?? null, username: usernamesById.get(id) ?? null }] };
+    }
+    throw new Error(`Unexpected query in rerollRound test: ${sql}`);
   });
 }
 
@@ -182,6 +204,42 @@ describe('createRound', () => {
     setupCreateRoundMocks(rows);
     const round = await createRound('somechannel');
     expect(round.usernameHints).toEqual(['alice', 'bob']);
+  });
+});
+
+describe('rerollRound', () => {
+  it('produces the same pick as the original variant-0 seed when no round exists yet', async () => {
+    const rows = [...candidatesForUser(1, 'alice', 5), ...candidatesForUser(2, 'bob', 5)];
+    setupCreateRoundMocks(rows);
+    const original = await createRound('somechannel');
+
+    setupRerollRoundMocks(rows);
+    const rerolled = await rerollRound('somechannel');
+    expect(rerolled.message).toBe(original.message);
+  });
+
+  it('is deterministic for the same stored variant', async () => {
+    const rows = [...candidatesForUser(1, 'alice', 5), ...candidatesForUser(2, 'bob', 5)];
+    setupRerollRoundMocks(rows, { existingVariant: 2 });
+    const a = await rerollRound('somechannel');
+    setupRerollRoundMocks(rows, { existingVariant: 2 });
+    const b = await rerollRound('somechannel');
+    expect(a.message).toBe(b.message);
+  });
+
+  it('increments the variant stored on the existing round', async () => {
+    const rows = [...candidatesForUser(1, 'alice', 5), ...candidatesForUser(2, 'bob', 5)];
+    setupRerollRoundMocks(rows, { existingVariant: 2 });
+    await rerollRound('somechannel');
+    const insertCall = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('on conflict (channel, game_date) do update')
+    );
+    expect((insertCall?.[1] as unknown[])?.[6]).toBe(3);
+  });
+
+  it('throws when no chatter has enough eligible messages', async () => {
+    setupRerollRoundMocks(candidatesForUser(1, 'alice', 3));
+    await expect(rerollRound('somechannel')).rejects.toThrow(/enough unique, readable messages/);
   });
 });
 
