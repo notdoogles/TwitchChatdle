@@ -129,6 +129,83 @@ export async function createRound(channel: string, host?: string | null): Promis
     return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
   }
 
+  const { userId, chosen } = pickRoundCandidate(candidates, roundSeed(channel, gameDate, 0), host);
+
+  const roundId = crypto.randomUUID();
+  const inserted = await pool.query(
+    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant)
+     values ($1, $2, $3, $4, $5, $6, 0)
+     on conflict (channel, game_date) do nothing
+     returning id, message_ids, max_guesses`,
+    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate]
+  );
+
+  if (inserted.rows.length === 0) {
+    // Another request won the race and already created today's round.
+    const { rows } = await pool.query(
+      `select id, message_ids, max_guesses from game_rounds where channel = $1 and game_date = $2`,
+      [channel, gameDate]
+    );
+    return buildNewRoundFromRow(rows[0].id, gameDate, allUsernames, rows[0].message_ids, rows[0].max_guesses, host);
+  }
+
+  const row = inserted.rows[0];
+  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
+}
+
+// Admin-only: forces today's round to a different pick than whatever is
+// currently stored (or than the original pick, if nothing was stored yet),
+// by bumping the per-day `variant` counter that's folded into the RNG seed.
+// Guarded by ADMIN_SECRET at the route layer (see app/api/game/reroll),
+// not here -- this function assumes the caller has already authorized.
+export async function rerollRound(channel: string, host?: string | null): Promise<NewRound> {
+  const gameDate = getGameDate(new Date(), host);
+  const candidates = await fetchCandidateMessages(channel, host);
+  const allUsernames = [...new Set(candidates.map((c) => c.username))].sort();
+
+  const existing = await pool.query<{ variant: number }>(
+    `select variant from game_rounds where channel = $1 and game_date = $2`,
+    [channel, gameDate]
+  );
+  const nextVariant = (existing.rows[0]?.variant ?? -1) + 1;
+  const { userId, chosen } = pickRoundCandidate(candidates, roundSeed(channel, gameDate, nextVariant), host);
+
+  const roundId = crypto.randomUUID();
+  const { rows } = await pool.query(
+    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (channel, game_date) do update
+       set id = excluded.id,
+           user_id = excluded.user_id,
+           message_ids = excluded.message_ids,
+           max_guesses = excluded.max_guesses,
+           variant = excluded.variant,
+           created_at = now()
+     returning id, message_ids, max_guesses`,
+    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate, nextVariant]
+  );
+
+  const row = rows[0];
+  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
+}
+
+// The RNG seed for a given day's round. `variant` 0 always reproduces the
+// exact seed string used before reroll support existed, so already-created
+// rounds don't change their answer on deploy; only variant >= 1 (from an
+// explicit reroll) changes the seed.
+function roundSeed(channel: string, gameDate: string, variant: number): string {
+  return variant > 0 ? `${channel}:${gameDate}:${variant}` : `${channel}:${gameDate}`;
+}
+
+interface PickedRound {
+  userId: number;
+  chosen: CandidateRow[];
+}
+
+// Shared by createRound/rerollRound: groups candidates by chatter, applies
+// the min-eligible-messages and top-chatters-limit filters, then makes the
+// seeded pick. Throws if there's no eligible pool at all.
+function pickRoundCandidate(candidates: CandidateRow[], seed: string, host?: string | null): PickedRound {
   if (candidates.length === 0) {
     throw new Error('No candidate messages yet -- let the channel chat a bit more first.');
   }
@@ -156,31 +233,10 @@ export async function createRound(channel: string, host?: string | null): Promis
   }
   eligible.sort((a, b) => a[0] - b[0]); // stable order so the seeded pick below is reproducible
 
-  const rng = mulberry32(seedFromString(`${channel}:${gameDate}`));
+  const rng = mulberry32(seedFromString(seed));
   const [userId, userMessages] = eligible[Math.floor(rng() * eligible.length)];
   const shuffled = seededShuffle(userMessages, rng);
-  const chosen = shuffled.slice(0, MAX_GUESSES);
-
-  const roundId = crypto.randomUUID();
-  const inserted = await pool.query(
-    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (channel, game_date) do nothing
-     returning id, message_ids, max_guesses`,
-    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate]
-  );
-
-  if (inserted.rows.length === 0) {
-    // Another request won the race and already created today's round.
-    const { rows } = await pool.query(
-      `select id, message_ids, max_guesses from game_rounds where channel = $1 and game_date = $2`,
-      [channel, gameDate]
-    );
-    return buildNewRoundFromRow(rows[0].id, gameDate, allUsernames, rows[0].message_ids, rows[0].max_guesses, host);
-  }
-
-  const row = inserted.rows[0];
-  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
+  return { userId, chosen: shuffled.slice(0, MAX_GUESSES) };
 }
 
 async function buildNewRoundFromRow(

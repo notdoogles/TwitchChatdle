@@ -64,6 +64,12 @@ create table if not exists game_rounds (
 
 create index if not exists idx_game_rounds_channel on game_rounds(channel);
 
+-- Tracks how many times a given day's round has been rerolled via the
+-- admin /api/game/reroll endpoint (0 = original pick). Folded into the RNG
+-- seed so a reroll deterministically produces a *different* pick than the
+-- previous variant, while still being reproducible if computed twice.
+alter table game_rounds add column if not exists variant integer not null default 0;
+
 -- Enforces "one answer per channel per day" -- apps/web's createRound()
 -- does an upsert-style insert against this so concurrent first-visitors of
 -- the day can't create two different daily answers.
