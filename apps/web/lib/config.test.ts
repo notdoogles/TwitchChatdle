@@ -20,6 +20,7 @@ import {
   getResetTimezone,
   getTopChattersLimit,
   getUsernameHintsLimit,
+  getAdminSecret,
   getWinnerMessage,
   slugify,
 } from './config';
@@ -117,6 +118,18 @@ describe('getUsernameHintsLimit', () => {
     expect(getUsernameHintsLimit()).toBe(DEFAULT_USERNAME_HINTS_LIMIT);
     vi.stubEnv('USERNAME_HINTS_LIMIT', 'not-a-number');
     expect(getUsernameHintsLimit()).toBe(DEFAULT_USERNAME_HINTS_LIMIT);
+  });
+});
+
+describe('getAdminSecret', () => {
+  it('returns undefined when unset or empty', () => {
+    vi.stubEnv('ADMIN_SECRET', '');
+    expect(getAdminSecret()).toBeUndefined();
+  });
+
+  it('returns the trimmed env var when set', () => {
+    vi.stubEnv('ADMIN_SECRET', '  s3cr3t  ');
+    expect(getAdminSecret()).toBe('s3cr3t');
   });
 });
 
