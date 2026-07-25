@@ -19,6 +19,10 @@ export interface TenantOverrides {
   usernameHintsLimit?: number;
   maxMessageLength?: number;
   maxMessageWords?: number;
+  // Caps the answer pool to this channel's top N chatters by eligible
+  // message count. Omitted/undefined means no cap (every eligible chatter
+  // can be picked).
+  topChattersLimit?: number;
   // Subfolder under public/static/tenants/ to read winner/loser images
   // from. Falls back to the shared public/static/winners|losers/
   // directories when omitted or when the tenant folder doesn't exist.
