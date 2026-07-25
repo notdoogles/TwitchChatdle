@@ -130,6 +130,26 @@ empty, no image is shown for that outcome. The list of available images is
 read at build time (`lib/resultImages.ts`), so a new deploy/build is needed
 to pick up newly added images.
 
+## Rerolling today's round
+
+`POST /api/game/reroll` forces today's round to a different pick, for when
+you don't want to wait for the next daily reset. It requires an
+`x-admin-secret` request header matching `ADMIN_SECRET` -- if `ADMIN_SECRET`
+isn't set, the endpoint refuses every request rather than defaulting to
+open. Example:
+
+```sh
+curl -X POST https://your-deployment.example.com/api/game/reroll \
+  -H "x-admin-secret: $ADMIN_SECRET"
+```
+
+Rerolling changes the shared daily answer for every player, including
+anyone already mid-guess on the current round -- it's an admin/debug tool,
+not something to expose to players. Each reroll is still deterministic
+(rerolling twice with no other changes reproduces the same second pick),
+tracked via a per-day `variant` counter in `game_rounds` that's folded into
+the same seeded RNG used for the original pick.
+
 ## Notes
 
 - Guesses are graded server-side (`game_rounds` stores the answer) so the
