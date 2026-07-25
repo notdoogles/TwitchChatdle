@@ -123,7 +123,9 @@ describe('createRound', () => {
     expect(round.maxGuesses).toBe(5);
     expect(round.guessesRemaining).toBe(5);
     expect(round.message).toMatch(/from bob/);
-    expect(round.usernameHints).toEqual(['alice', 'bob']);
+    // alice has only 3 eligible messages (< 5), so she's excluded from the
+    // hint list too, not just from being pickable as the answer.
+    expect(round.usernameHints).toEqual(['bob']);
   });
 
   it('is deterministic for the same channel and game day', async () => {
@@ -157,11 +159,11 @@ describe('createRound', () => {
   it('respects a custom USERNAME_HINTS_LIMIT', async () => {
     vi.stubEnv('USERNAME_HINTS_LIMIT', '3');
     const rows = [
-      ...candidatesForUser(1, 'alice', 1),
+      ...candidatesForUser(1, 'alice', 5),
       ...candidatesForUser(2, 'bob', 5),
-      ...candidatesForUser(3, 'carol', 1),
-      ...candidatesForUser(4, 'dave', 1),
-      ...candidatesForUser(5, 'erin', 1),
+      ...candidatesForUser(3, 'carol', 5),
+      ...candidatesForUser(4, 'dave', 5),
+      ...candidatesForUser(5, 'erin', 5),
     ];
     setupCreateRoundMocks(rows);
     const round = await createRound('somechannel');
@@ -171,20 +173,37 @@ describe('createRound', () => {
 
   it('guarantees the correct answer is included even when the hint list is capped below the total chatter count', async () => {
     vi.stubEnv('USERNAME_HINTS_LIMIT', '3');
-    // Only "bob" has enough messages to be picked as the answer, but the
-    // uncapped username list has 5 entries -- alice/carol/dave/erin sort
-    // before bob, so a naive slice(0, 3) would exclude the correct answer.
+    // All five chatters are eligible (>= 5 messages each), so whichever one
+    // the seeded pick lands on, alice/carol/dave/erin sorting before it
+    // shouldn't be able to push it out of a naive slice(0, 3).
     const rows = [
-      ...candidatesForUser(1, 'alice', 1),
+      ...candidatesForUser(1, 'alice', 5),
       ...candidatesForUser(2, 'bob', 5),
-      ...candidatesForUser(3, 'carol', 1),
-      ...candidatesForUser(4, 'dave', 1),
-      ...candidatesForUser(5, 'erin', 1),
+      ...candidatesForUser(3, 'carol', 5),
+      ...candidatesForUser(4, 'dave', 5),
+      ...candidatesForUser(5, 'erin', 5),
     ];
     setupCreateRoundMocks(rows);
     const round = await createRound('somechannel');
-    expect(round.usernameHints).toContain('bob');
+    const correctUsername = round.message.split(' from ')[1];
+    expect(round.usernameHints).toContain(correctUsername);
     expect(round.usernameHints).toHaveLength(3);
+    vi.unstubAllEnvs();
+  });
+
+  it('excludes chatters without enough eligible messages from the hint list', async () => {
+    const rows = [...candidatesForUser(1, 'alice', 1), ...candidatesForUser(2, 'bob', 5)];
+    setupCreateRoundMocks(rows);
+    const round = await createRound('somechannel');
+    expect(round.usernameHints).toEqual(['bob']);
+  });
+
+  it('excludes chatters cut by TOP_CHATTERS_LIMIT from the hint list', async () => {
+    vi.stubEnv('TOP_CHATTERS_LIMIT', '1');
+    const rows = [...candidatesForUser(1, 'alice', 8), ...candidatesForUser(2, 'bob', 5)];
+    setupCreateRoundMocks(rows);
+    const round = await createRound('somechannel');
+    expect(round.usernameHints).toEqual(['alice']);
     vi.unstubAllEnvs();
   });
 

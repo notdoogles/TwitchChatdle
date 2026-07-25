@@ -107,8 +107,9 @@ Set `TOP_CHATTERS_LIMIT` to further cap which chatters can be picked as a
 round's answer, to the channel's top N by eligible message count. This is
 optional (unset means no cap) and useful for very active channels, so a
 lurker with just barely enough eligible messages isn't picked as often as a
-regular. It only affects who can be the *answer* -- the autocomplete hint
-list (see `USERNAME_HINTS_LIMIT` below) is unaffected.
+regular. The autocomplete hint list (see `USERNAME_HINTS_LIMIT` below) is
+built from this same capped pool, so it never suggests a chatter who
+couldn't actually be that day's answer.
 
 ## Daily reset time
 
@@ -154,10 +155,11 @@ the same seeded RNG used for the original pick.
 
 - Guesses are graded server-side (`game_rounds` stores the answer) so the
   correct username is never sent to the browser until the round ends.
-- The guess box's autocomplete list is every chatter with an eligible
-  message in the channel, capped at `USERNAME_HINTS_LIMIT` (default 300,
-  set in `.env`) -- a hint, not a spoiler, since it doesn't indicate which
-  one is correct. The cap is a UX choice, not a performance one, and the
+- The guess box's autocomplete list is every chatter who could be picked as
+  the round's answer (i.e. it respects `TOP_CHATTERS_LIMIT` too), capped at
+  `USERNAME_HINTS_LIMIT` (default 300, set in `.env`) -- a hint, not a
+  spoiler, since it doesn't indicate which one is correct. The
+  `USERNAME_HINTS_LIMIT` cap is a UX choice, not a performance one, and the
   correct answer is always included in the list even if the channel has
   more eligible chatters than the cap.
 - Theme defaults to the browser's system preference and can be overridden
