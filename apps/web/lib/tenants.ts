@@ -39,6 +39,11 @@ export const TENANTS: Record<string, TenantOverrides> = {
     gameName: 'Hannerdle',
     imagesSlug: 'hanner',
   },
+  'freezerdle.doogl.es': {
+    channel: 'chillmuri_',
+    gameName: 'Freezerdle',
+    imagesSlug: 'chillmuri',
+  },
 };
 
 // Hostnames may arrive with a port (e.g. "localhost:3000") or mixed case;
