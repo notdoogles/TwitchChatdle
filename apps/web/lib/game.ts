@@ -286,10 +286,21 @@ async function buildNewRoundFromRow(
 // list. `correctUsername` is always expected to be a member of
 // `allUsernames` since it comes from the same candidate pool.
 function capUsernameHints(allUsernames: string[], correctUsername: string | undefined, limit: number): string[] {
-  if (allUsernames.length <= limit) return allUsernames;
-  if (!correctUsername || !allUsernames.includes(correctUsername)) return allUsernames.slice(0, limit);
+  // allUsernames is recomputed from the *current* eligible-chatter pool on
+  // every fetch, but that pool can drift after a round is created (e.g. a
+  // duplicate message posted later makes one of the answer's messages
+  // non-unique, dropping the answerer below the min-messages/top-chatters
+  // cutoff). The round's answer is already locked in via message_ids, so it
+  // must always be unioned back in here rather than silently omitted.
+  const usernames =
+    correctUsername && !allUsernames.includes(correctUsername)
+      ? [...allUsernames, correctUsername].sort()
+      : allUsernames;
 
-  const others = allUsernames.filter((name) => name !== correctUsername).slice(0, limit - 1);
+  if (usernames.length <= limit) return usernames;
+  if (!correctUsername) return usernames.slice(0, limit);
+
+  const others = usernames.filter((name) => name !== correctUsername).slice(0, limit - 1);
   return [...others, correctUsername].sort();
 }
 

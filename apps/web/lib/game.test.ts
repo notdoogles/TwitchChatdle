@@ -147,6 +147,20 @@ describe('createRound', () => {
     expect(round.message).toBe('this is unique chat message number 0 from alice');
   });
 
+  it('keeps the answer in usernameHints for an existing round even if they later drop out of the live eligible pool', async () => {
+    // alice was eligible (5 messages) when the round was created, but a
+    // duplicate posted since then makes the candidate query re-run with
+    // only 4 of her messages still unique -- simulating pool drift after
+    // the round already locked in her message_ids as the answer.
+    const rows = [...candidatesForUser(1, 'alice', 4), ...candidatesForUser(2, 'bob', 5)];
+    setupCreateRoundMocks(rows, {
+      existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5 }],
+    });
+    const round = await createRound('somechannel');
+    expect(round.message).toBe('this is unique chat message number 0 from alice');
+    expect(round.usernameHints).toContain('alice');
+  });
+
   it('falls back to the winning row when the insert loses an insert race', async () => {
     const rows = candidatesForUser(1, 'alice', 5);
     setupCreateRoundMocks(rows, {
