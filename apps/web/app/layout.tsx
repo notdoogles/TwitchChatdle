@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Analytics } from '@vercel/analytics/next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { headers } from 'next/headers';
 import { getGameName } from '@/lib/config';
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <SiteFooter />
+        <Analytics />
       </body>
     </html>
   );
