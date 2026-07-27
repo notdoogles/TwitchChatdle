@@ -24,17 +24,35 @@ create table if not exists users (
   first_seen_at timestamptz not null default now()
 );
 
--- Snapshots of the chatter's most recently observed IRC tags, refreshed on
--- every message alongside display_name (see apps/ingest/index.js
--- upsertUser). Used by apps/web's easy-mode hints (lib/game.ts): color is
--- the chatter's chat name color, badges is the raw badges tag object
--- (e.g. {"subscriber":"12","vip":"1"}), classified into global vs.
--- channel-specific hints by apps/web/lib/badges.ts. Both are null for any
--- chatter who hasn't sent a message since this column was added, even if
--- one of their older messages is picked as a round's answer -- apps/web
--- treats null as "no badge"/"default color" rather than erroring.
+-- Deprecated: these used to hold the chatter's most recently observed IRC
+-- tags, but since apps/ingest can log multiple channels into this same
+-- users table (TWITCH_CHANNELS), a single global snapshot is wrong for any
+-- chatter active in more than one channel -- e.g. a VIP in channel A who
+-- also chats in channel B would show as VIP everywhere. Superseded by
+-- user_channel_state below, which scopes color/badges per (channel,
+-- user). Left in place (unread) rather than dropped -- this migration is
+-- additive-only.
 alter table users add column if not exists color text;
 alter table users add column if not exists badges jsonb;
+
+-- Per-channel snapshot of the chatter's most recently observed IRC tags in
+-- *that* channel, refreshed on every message (see apps/ingest/index.js
+-- upsertChannelState). Used by apps/web's easy-mode hints (lib/game.ts):
+-- color is the chatter's chat name color, badges is the raw badges tag
+-- object (e.g. {"subscriber":"12","vip":"1"}), classified into global vs.
+-- channel-specific hints by apps/web/lib/badges.ts. Both are null for any
+-- chatter who hasn't sent a message in that channel since this table was
+-- added, even if one of their older messages is picked as a round's
+-- answer -- apps/web treats null as "no badge"/"default color" rather
+-- than erroring.
+create table if not exists user_channel_state (
+  user_id integer not null references users(id),
+  channel text not null,
+  color text,
+  badges jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, channel)
+);
 
 create table if not exists messages (
   id bigserial primary key,
@@ -111,7 +129,7 @@ create index if not exists idx_request_log_created_at on request_log(created_at)
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
-  console.log('Done. Tables ready: users (+ color/badges), messages, excluded_users, game_rounds, request_log');
+  console.log('Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, request_log');
   await pool.end();
 }
 
