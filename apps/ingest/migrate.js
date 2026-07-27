@@ -24,6 +24,18 @@ create table if not exists users (
   first_seen_at timestamptz not null default now()
 );
 
+-- Snapshots of the chatter's most recently observed IRC tags, refreshed on
+-- every message alongside display_name (see apps/ingest/index.js
+-- upsertUser). Used by apps/web's easy-mode hints (lib/game.ts): color is
+-- the chatter's chat name color, badges is the raw badges tag object
+-- (e.g. {"subscriber":"12","vip":"1"}), classified into global vs.
+-- channel-specific hints by apps/web/lib/badges.ts. Both are null for any
+-- chatter who hasn't sent a message since this column was added, even if
+-- one of their older messages is picked as a round's answer -- apps/web
+-- treats null as "no badge"/"default color" rather than erroring.
+alter table users add column if not exists color text;
+alter table users add column if not exists badges jsonb;
+
 create table if not exists messages (
   id bigserial primary key,
   user_id integer not null references users(id),
@@ -99,7 +111,7 @@ create index if not exists idx_request_log_created_at on request_log(created_at)
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
-  console.log('Done. Tables ready: users, messages, excluded_users, game_rounds, request_log');
+  console.log('Done. Tables ready: users (+ color/badges), messages, excluded_users, game_rounds, request_log');
   await pool.end();
 }
 
