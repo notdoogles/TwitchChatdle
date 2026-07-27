@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { pool } from './db';
 import { isIntelligible } from './textFilters';
+import { classifyBadges } from './badges';
+import { RoundHint } from './hints';
 import {
   getGameDate,
   getMaxMessageLength,
@@ -35,6 +37,32 @@ export interface GuessResult {
   nextMessage?: string | null;
   correctUsername?: string;
   allMessages?: string[];
+  // Easy-mode hint unlocked alongside this guess's nextMessage (see
+  // buildHintForRound below). Present regardless of the player's
+  // easy/hard preference -- that's a client-only rendering choice, same
+  // trust boundary as nextMessage itself being revealed ahead of any
+  // server-side mode enforcement.
+  hint?: RoundHint;
+}
+
+// Cumulative hint unlocked when advancing to `roundIndex` (0-based, so
+// roundIndex 1 = "round 2"): round 1 has no hint, round 2 reveals the
+// chatter's global Twitch badge, round 3 their chat color, round 4 their
+// channel-specific badge, round 5 their username length.
+function buildHintForRound(roundIndex: number, username: string, color: string | null, badges: unknown): RoundHint | undefined {
+  const classified = classifyBadges(badges as Record<string, string> | null);
+  switch (roundIndex) {
+    case 1:
+      return { globalBadge: classified.globalBadge };
+    case 2:
+      return { color: color || null };
+    case 3:
+      return { channelBadge: classified.channelBadge };
+    case 4:
+      return { usernameLength: username.length };
+    default:
+      return undefined;
+  }
 }
 
 export { getGameDate };
@@ -327,7 +355,7 @@ async function fetchMessagesByIds(messageIds: number[]): Promise<string[]> {
 // server-side "guesses used" counter that different players would stomp on.
 export async function submitGuess(roundId: string, guessRaw: string, guessNumber: number): Promise<GuessResult> {
   const { rows } = await pool.query(
-    `select gr.message_ids, gr.max_guesses, u.username
+    `select gr.message_ids, gr.max_guesses, u.username, u.color, u.badges
      from game_rounds gr
      join users u on u.id = gr.user_id
      where gr.id = $1`,
@@ -353,11 +381,13 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
 
   let nextMessage: string | null = null;
   let allMessages: string[] | undefined;
+  let hint: RoundHint | undefined;
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
     const { rows: msgRows } = await pool.query('select message_text from messages where id = $1', [nextId]);
     nextMessage = msgRows[0]?.message_text ?? null;
+    hint = buildHintForRound(nextIndex, round.username, round.color, round.badges);
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids);
   }
@@ -369,5 +399,6 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
     nextMessage,
     correctUsername: gameOver ? round.username : undefined,
     allMessages,
+    hint,
   };
 }

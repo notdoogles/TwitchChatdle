@@ -280,6 +280,8 @@ function setupSubmitGuessMocks(round: {
   message_ids: number[];
   max_guesses: number;
   username: string;
+  color?: string | null;
+  badges?: Record<string, string> | null;
 } | null, messagesById: Map<number, string>) {
   mockedQuery.mockImplementation(async (sql: string, params: unknown[]) => {
     if (sql.includes('join users u')) {
@@ -296,7 +298,13 @@ function setupSubmitGuessMocks(round: {
 describe('submitGuess', () => {
   const messageIds = [1, 2, 3, 4, 5];
   const messagesById = new Map(messageIds.map((id) => [id, `message #${id}`]));
-  const round = { message_ids: messageIds, max_guesses: 5, username: 'Alice' };
+  const round = {
+    message_ids: messageIds,
+    max_guesses: 5,
+    username: 'Alice',
+    color: '#FF0000',
+    badges: { moderator: '1', premium: '1' },
+  };
 
   it('throws for an unknown roundId', async () => {
     setupSubmitGuessMocks(null, messagesById);
@@ -316,6 +324,7 @@ describe('submitGuess', () => {
     expect(result.gameOver).toBe(true);
     expect(result.correctUsername).toBe('Alice');
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
+    expect(result.hint).toBeUndefined();
   });
 
   it('reveals the next message and decrements guesses remaining on a wrong guess', async () => {
@@ -326,6 +335,45 @@ describe('submitGuess', () => {
     expect(result.guessesRemaining).toBe(4);
     expect(result.nextMessage).toBe('message #2');
     expect(result.allMessages).toBeUndefined();
+  });
+
+  it('attaches the global badge hint when advancing to round 2', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await submitGuess('round-1', 'bob', 0);
+    expect(result.hint).toEqual({ globalBadge: 'Prime' });
+  });
+
+  it('attaches the color hint when advancing to round 3', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await submitGuess('round-1', 'bob', 1);
+    expect(result.hint).toEqual({ color: '#FF0000' });
+  });
+
+  it('attaches the channel badge hint when advancing to round 4', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await submitGuess('round-1', 'bob', 2);
+    expect(result.hint).toEqual({ channelBadge: 'Moderator' });
+  });
+
+  it('attaches the username length hint when advancing to round 5', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await submitGuess('round-1', 'bob', 3);
+    expect(result.hint).toEqual({ usernameLength: 5 });
+  });
+
+  it('falls back to null badge/color hints for a chatter with no captured data yet', async () => {
+    setupSubmitGuessMocks({ ...round, color: null, badges: null }, messagesById);
+    const globalHint = await submitGuess('round-1', 'bob', 0);
+    expect(globalHint.hint).toEqual({ globalBadge: null });
+    setupSubmitGuessMocks({ ...round, color: null, badges: null }, messagesById);
+    const colorHint = await submitGuess('round-1', 'bob', 1);
+    expect(colorHint.hint).toEqual({ color: null });
+  });
+
+  it('does not attach a hint once the game is over', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await submitGuess('round-1', 'bob', 4);
+    expect(result.hint).toBeUndefined();
   });
 
   it('ends the game and reveals all messages once guesses are exhausted', async () => {
