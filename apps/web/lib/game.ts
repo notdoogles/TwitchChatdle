@@ -355,9 +355,10 @@ async function fetchMessagesByIds(messageIds: number[]): Promise<string[]> {
 // server-side "guesses used" counter that different players would stomp on.
 export async function submitGuess(roundId: string, guessRaw: string, guessNumber: number): Promise<GuessResult> {
   const { rows } = await pool.query(
-    `select gr.message_ids, gr.max_guesses, u.username, u.color, u.badges
+    `select gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
      from game_rounds gr
      join users u on u.id = gr.user_id
+     left join user_channel_state ucs on ucs.user_id = gr.user_id and ucs.channel = gr.channel
      where gr.id = $1`,
     [roundId]
   );
