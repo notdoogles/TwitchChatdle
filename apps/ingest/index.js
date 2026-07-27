@@ -59,14 +59,15 @@ async function refreshExcludedUsernames() {
   console.log(`Excluded usernames loaded (${excludedUsernames.size}):`, [...excludedUsernames].join(', ') || '(none)');
 }
 
-async function upsertUser(twitchUserId, username, displayName) {
+async function upsertUser(twitchUserId, username, displayName, color, badges) {
   const res = await pool.query(
-    `insert into users (twitch_user_id, username, display_name)
-     values ($1, $2, $3)
+    `insert into users (twitch_user_id, username, display_name, color, badges)
+     values ($1, $2, $3, $4, $5)
      on conflict (twitch_user_id)
-     do update set username = excluded.username, display_name = excluded.display_name
+     do update set username = excluded.username, display_name = excluded.display_name,
+       color = excluded.color, badges = excluded.badges
      returning id`,
-    [twitchUserId, username, displayName]
+    [twitchUserId, username, displayName, color || null, JSON.stringify(badges ?? {})]
   );
   return res.rows[0].id;
 }
@@ -91,7 +92,7 @@ client.on('message', async (channel, tags, message, self) => {
   if (isExcluded(username, excludedUsernames)) return;
 
   try {
-    const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username);
+    const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username, tags.color, tags.badges);
     await insertMessage(userId, channel.replace('#', ''), message);
   } catch (err) {
     console.error('Failed to log message:', err.message);
