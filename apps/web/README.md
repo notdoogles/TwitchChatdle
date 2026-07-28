@@ -69,6 +69,18 @@ single-tenant/default case, where there's no tenant at all).
 This is purely additive: if `lib/tenants.ts` has no entries (the default),
 behavior is identical to the single-tenant setup above.
 
+### Previewing a specific tenant
+
+Preview deployments get a `*.vercel.app` URL that won't match any hostname
+in `lib/tenants.ts`, so tenant overrides don't apply by default. On any
+non-production deployment (and locally), append `?tenant=<hostname>` to the
+URL, e.g. `https://<preview>.vercel.app/?tenant=whisqeydle.doogl.es`, to
+simulate that tenant's hostname for the request. Middleware stores the
+choice in a cookie so it also applies to the `/api/game/new` fetch the page
+makes afterwards. This override is a no-op in production
+(`VERCEL_ENV=production`), so it can never be used to change a live
+tenant's game.
+
 ## Deploying to Vercel
 
 1. Push this folder to a GitHub repo, import it in Vercel.
