@@ -13,78 +13,101 @@ vi.stubGlobal(
   vi.fn(async () => ({ ok: false }))
 );
 
-import { classifyBadges } from './badges';
+import { classifyAllBadges } from './badges';
 
 const CHANNEL = 'somechannel';
 
-describe('classifyBadges', () => {
-  it('returns nulls for a chatter with no badges', async () => {
-    expect(await classifyBadges(null, CHANNEL)).toEqual({ globalBadge: null, channelBadge: null });
-    expect(await classifyBadges(undefined, CHANNEL)).toEqual({ globalBadge: null, channelBadge: null });
-    expect(await classifyBadges({}, CHANNEL)).toEqual({ globalBadge: null, channelBadge: null });
+describe('classifyAllBadges', () => {
+  it('returns empty lists for a chatter with no badges', async () => {
+    expect(await classifyAllBadges(null, CHANNEL)).toEqual({ globalBadges: [], channelBadges: [] });
+    expect(await classifyAllBadges(undefined, CHANNEL)).toEqual({ globalBadges: [], channelBadges: [] });
+    expect(await classifyAllBadges({}, CHANNEL)).toEqual({ globalBadges: [], channelBadges: [] });
   });
 
   it('classifies a channel-specific badge (moderator)', async () => {
-    expect(await classifyBadges({ moderator: '1' }, CHANNEL)).toEqual({
-      globalBadge: null,
-      channelBadge: 'Moderator',
+    expect(await classifyAllBadges({ moderator: '1' }, CHANNEL)).toEqual({
+      globalBadges: [],
+      channelBadges: [{ slug: 'moderator', version: '1', label: 'Moderator' }],
     });
   });
 
   it('classifies a channel-specific badge (vip)', async () => {
-    expect(await classifyBadges({ vip: '1' }, CHANNEL)).toEqual({ globalBadge: null, channelBadge: 'VIP' });
+    expect(await classifyAllBadges({ vip: '1' }, CHANNEL)).toEqual({
+      globalBadges: [],
+      channelBadges: [{ slug: 'vip', version: '1', label: 'VIP' }],
+    });
   });
 
   it('classifies a channel-specific badge (subscriber)', async () => {
-    expect(await classifyBadges({ subscriber: '12' }, CHANNEL)).toEqual({
-      globalBadge: null,
-      channelBadge: 'Subscriber',
+    expect(await classifyAllBadges({ subscriber: '12' }, CHANNEL)).toEqual({
+      globalBadges: [],
+      channelBadges: [{ slug: 'subscriber', version: '12', label: 'Subscriber' }],
     });
   });
 
   it('classifies a channel-specific badge (lead_moderator)', async () => {
-    expect(await classifyBadges({ lead_moderator: '1' }, CHANNEL)).toEqual({
-      globalBadge: null,
-      channelBadge: 'Lead Moderator',
+    expect(await classifyAllBadges({ lead_moderator: '1' }, CHANNEL)).toEqual({
+      globalBadges: [],
+      channelBadges: [{ slug: 'lead_moderator', version: '1', label: 'Lead Moderator' }],
     });
   });
 
   it('classifies a global badge (premium/Prime)', async () => {
-    expect(await classifyBadges({ premium: '1' }, CHANNEL)).toEqual({ globalBadge: 'Prime', channelBadge: null });
+    expect(await classifyAllBadges({ premium: '1' }, CHANNEL)).toEqual({
+      globalBadges: [{ slug: 'premium', version: '1', label: 'Prime' }],
+      channelBadges: [],
+    });
   });
 
   it('classifies a global badge (partner)', async () => {
-    expect(await classifyBadges({ partner: '1' }, CHANNEL)).toEqual({ globalBadge: 'Partner', channelBadge: null });
+    expect(await classifyAllBadges({ partner: '1' }, CHANNEL)).toEqual({
+      globalBadges: [{ slug: 'partner', version: '1', label: 'Partner' }],
+      channelBadges: [],
+    });
   });
 
   it('classifies a global badge (social-sharing)', async () => {
-    expect(await classifyBadges({ 'social-sharing': '3' }, CHANNEL)).toEqual({
-      globalBadge: 'Social Sharing',
-      channelBadge: null,
+    expect(await classifyAllBadges({ 'social-sharing': '3' }, CHANNEL)).toEqual({
+      globalBadges: [{ slug: 'social-sharing', version: '3', label: 'Social Sharing' }],
+      channelBadges: [],
     });
   });
 
-  it('picks one representative badge per category by priority when a chatter has several', async () => {
-    // moderator outranks subscriber in CHANNEL_PRIORITY.
-    expect(await classifyBadges({ subscriber: '6', moderator: '1' }, CHANNEL)).toEqual({
-      globalBadge: null,
-      channelBadge: 'Moderator',
+  it('returns every badge in a category, not just one representative', async () => {
+    expect(await classifyAllBadges({ subscriber: '6', moderator: '1' }, CHANNEL)).toEqual({
+      globalBadges: [],
+      channelBadges: [
+        { slug: 'subscriber', version: '6', label: 'Subscriber' },
+        { slug: 'moderator', version: '1', label: 'Moderator' },
+      ],
     });
   });
 
-  it('classifies both a global and a channel badge for the same chatter', async () => {
-    expect(await classifyBadges({ vip: '1', premium: '1' }, CHANNEL)).toEqual({
-      globalBadge: 'Prime',
-      channelBadge: 'VIP',
+  it('classifies both global and channel badges for the same chatter', async () => {
+    expect(await classifyAllBadges({ vip: '1', premium: '1' }, CHANNEL)).toEqual({
+      globalBadges: [{ slug: 'premium', version: '1', label: 'Prime' }],
+      channelBadges: [{ slug: 'vip', version: '1', label: 'VIP' }],
+    });
+  });
+
+  it('handles a chatter with all three badges from the reported bug (subscriber, lead_moderator, social-sharing)', async () => {
+    expect(
+      await classifyAllBadges({ subscriber: '12', lead_moderator: '1', 'social-sharing': '3' }, CHANNEL)
+    ).toEqual({
+      globalBadges: [{ slug: 'social-sharing', version: '3', label: 'Social Sharing' }],
+      channelBadges: [
+        { slug: 'subscriber', version: '12', label: 'Subscriber' },
+        { slug: 'lead_moderator', version: '1', label: 'Lead Moderator' },
+      ],
     });
   });
 
   it('ignores unrecognized badge slugs when live Helix data is unavailable', async () => {
     // No TWITCH_CLIENT_ID/SECRET configured in tests, so the live Helix
     // fallback lookup can't confirm this slug either way.
-    expect(await classifyBadges({ 'some-unknown-badge': '1' }, CHANNEL)).toEqual({
-      globalBadge: null,
-      channelBadge: null,
+    expect(await classifyAllBadges({ 'some-unknown-badge': '1' }, CHANNEL)).toEqual({
+      globalBadges: [],
+      channelBadges: [],
     });
   });
 });

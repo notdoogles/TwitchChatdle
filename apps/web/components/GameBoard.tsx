@@ -530,18 +530,32 @@ export default function GameBoard({
             <span className={styles.username}>
               {isOver && showAllMessages ? (
                 <>
+                  {(answerHint.globalBadges ?? []).map((badge, badgeIndex) => (
+                    <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                  ))}
+                  {(answerHint.channelBadges ?? []).map((badge, badgeIndex) => (
+                    <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                  ))}
                   <span style={answerHint.color ? { color: answerHint.color } : undefined}>
                     {correctUsername}
                   </span>
-                  {answerHint.globalBadge && (
-                    <BadgePill label={answerHint.globalBadge} iconUrl={answerHint.globalBadgeIcon} />
-                  )}
-                  {answerHint.channelBadge && (
-                    <BadgePill label={answerHint.channelBadge} iconUrl={answerHint.channelBadgeIcon} />
-                  )}
                 </>
               ) : (
                 <>
+                  {easyMode && hints.globalBadges !== undefined && hints.globalBadges.length === 0 && (
+                    <BadgePill label={NONE_LABEL} />
+                  )}
+                  {easyMode &&
+                    (hints.globalBadges ?? []).map((badge, badgeIndex) => (
+                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    ))}
+                  {easyMode && hints.channelBadges !== undefined && hints.channelBadges.length === 0 && (
+                    <BadgePill label={NONE_LABEL} />
+                  )}
+                  {easyMode &&
+                    (hints.channelBadges ?? []).map((badge, badgeIndex) => (
+                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    ))}
                   {easyMode && hints.usernameLength !== undefined && (
                     <span className={styles.usernameLength}>({hints.usernameLength}) </span>
                   )}
@@ -551,12 +565,6 @@ export default function GameBoard({
                   >
                     {usernameMask}
                   </span>
-                  {easyMode && hints.globalBadge !== undefined && (
-                    <BadgePill label={hints.globalBadge ?? NONE_LABEL} iconUrl={hints.globalBadgeIcon} />
-                  )}
-                  {easyMode && hints.channelBadge !== undefined && (
-                    <BadgePill label={hints.channelBadge ?? NONE_LABEL} iconUrl={hints.channelBadgeIcon} />
-                  )}
                 </>
               )}
             </span>

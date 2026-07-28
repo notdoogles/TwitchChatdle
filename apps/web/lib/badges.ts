@@ -6,10 +6,11 @@ import { getChannelBadgeSlugs, getGlobalBadgeSlugs } from './badgeImages';
 // subscriber, founder, ...). The tag itself doesn't separate them. Slugs
 // Twitch has had for a long time are classified instantly from the fixed
 // lists below; anything not in these lists falls back to asking Twitch's
-// live Helix badge data (see findRepresentativeBadgeSlugs) so newly added
-// badges (e.g. "lead_moderator", "social-sharing") still work without a
-// code change here. Used by lib/game.ts to build the easy-mode "global
-// badge" (round 2) and "channel badge" (round 4) hints.
+// live Helix badge data (see classifyAllBadges) so newly added badges
+// (e.g. "lead_moderator", "social-sharing") still work without a code
+// change here. Used by lib/game.ts to build the easy-mode "global badges"
+// (round 2) and "channel badges" (round 4) hints -- every badge a chatter
+// has is shown, not just one representative per category.
 const CHANNEL_BADGE_LABELS: Record<string, string> = {
   broadcaster: 'Broadcaster',
   moderator: 'Moderator',
@@ -38,12 +39,6 @@ const GLOBAL_BADGE_LABELS: Record<string, string> = {
   'social-sharing': 'Social Sharing',
 };
 
-// Highest-priority slug first, used when a chatter has more than one badge
-// in the same category so the hint only ever surfaces one representative
-// badge.
-const CHANNEL_PRIORITY = Object.keys(CHANNEL_BADGE_LABELS);
-const GLOBAL_PRIORITY = Object.keys(GLOBAL_BADGE_LABELS);
-
 // Turns an unrecognized-but-live-confirmed slug into a readable label,
 // e.g. "lead_moderator" -> "Lead Moderator", so a badge Twitch just shipped
 // still shows *something* instead of silently disappearing while this
@@ -57,73 +52,63 @@ function prettifySlug(slug: string): string {
     .join(' ');
 }
 
-export interface ClassifiedBadges {
-  globalBadge: string | null;
-  channelBadge: string | null;
+export interface ClassifiedBadgeSlug {
+  slug: string;
+  version: string;
+  label: string;
 }
 
-export async function classifyBadges(
+export interface ClassifiedBadges {
+  channelBadges: ClassifiedBadgeSlug[];
+  globalBadges: ClassifiedBadgeSlug[];
+}
+
+// Classifies every slug in a chatter's `badges` IRC tag into the channel
+// or global category (dropping any that are neither), preserving the
+// order Twitch sent them in. lib/game.ts uses the slug+version pair to
+// resolve the actual badge image (lib/badgeImages.ts) and the label as a
+// fallback for when no image is available.
+export async function classifyAllBadges(
   badges: Record<string, string> | null | undefined,
   channel: string
 ): Promise<ClassifiedBadges> {
-  const { channelSlug, globalSlug } = await findRepresentativeBadgeSlugs(badges, channel);
-  return {
-    channelBadge: channelSlug ? (CHANNEL_BADGE_LABELS[channelSlug] ?? prettifySlug(channelSlug)) : null,
-    globalBadge: globalSlug ? (GLOBAL_BADGE_LABELS[globalSlug] ?? prettifySlug(globalSlug)) : null,
-  };
-}
-
-export interface RepresentativeBadgeSlugs {
-  channelSlug: string | null;
-  channelVersion: string | null;
-  globalSlug: string | null;
-  globalVersion: string | null;
-}
-
-// Same representative-badge-per-category selection as classifyBadges, but
-// keeps the raw slug + version (e.g. "moderator"/"1") instead of resolving
-// to a display label. lib/badgeImages.ts needs the slug+version pair to
-// look up the actual badge image from Twitch's Badges API, which
-// classifyBadges's label-only return value discards.
-export async function findRepresentativeBadgeSlugs(
-  badges: Record<string, string> | null | undefined,
-  channel: string
-): Promise<RepresentativeBadgeSlugs> {
   const slugs = badges ? Object.keys(badges) : [];
-  if (slugs.length === 0) {
-    return { channelSlug: null, channelVersion: null, globalSlug: null, globalVersion: null };
-  }
+  if (slugs.length === 0) return { channelBadges: [], globalBadges: [] };
 
-  // Prefer the known priority lists first so a chatter with several badges
-  // in the same category still always surfaces the same representative
-  // one (e.g. moderator over subscriber) without needing a network call.
-  let channelSlug = CHANNEL_PRIORITY.find((slug) => slugs.includes(slug)) ?? null;
-  let globalSlug = GLOBAL_PRIORITY.find((slug) => slugs.includes(slug)) ?? null;
+  const channelSlugs: string[] = [];
+  const globalSlugs: string[] = [];
+  const unclassified: string[] = [];
+
+  for (const slug of slugs) {
+    if (slug in CHANNEL_BADGE_LABELS) channelSlugs.push(slug);
+    else if (slug in GLOBAL_BADGE_LABELS) globalSlugs.push(slug);
+    else unclassified.push(slug);
+  }
 
   // For any slug the static lists don't recognize, ask Twitch's live Helix
   // badge data which category it actually belongs to. Returns null (not
   // an empty set) when that data can't be fetched -- e.g. no
   // TWITCH_CLIENT_ID/SECRET configured -- in which case unrecognized
   // slugs are simply ignored, same as before this lookup existed.
-  const unclassified = slugs.filter((slug) => slug !== channelSlug && slug !== globalSlug);
   if (unclassified.length > 0) {
     const [liveChannelSlugs, liveGlobalSlugs] = await Promise.all([
-      channelSlug ? null : getChannelBadgeSlugs(channel),
-      globalSlug ? null : getGlobalBadgeSlugs(),
+      getChannelBadgeSlugs(channel),
+      getGlobalBadgeSlugs(),
     ]);
-
-    if (!channelSlug && liveChannelSlugs) {
-      channelSlug = unclassified.find((slug) => liveChannelSlugs.has(slug)) ?? null;
-    }
-    if (!globalSlug && liveGlobalSlugs) {
-      globalSlug = unclassified.find((slug) => slug !== channelSlug && liveGlobalSlugs.has(slug)) ?? null;
+    for (const slug of unclassified) {
+      if (liveChannelSlugs?.has(slug)) channelSlugs.push(slug);
+      else if (liveGlobalSlugs?.has(slug)) globalSlugs.push(slug);
     }
   }
 
+  const toClassified = (slug: string): ClassifiedBadgeSlug => ({
+    slug,
+    version: badges![slug],
+    label: CHANNEL_BADGE_LABELS[slug] ?? GLOBAL_BADGE_LABELS[slug] ?? prettifySlug(slug),
+  });
+
   return {
-    channelSlug,
-    channelVersion: channelSlug ? badges![channelSlug] : null,
-    globalSlug,
-    globalVersion: globalSlug ? badges![globalSlug] : null,
+    channelBadges: channelSlugs.map(toClassified),
+    globalBadges: globalSlugs.map(toClassified),
   };
 }

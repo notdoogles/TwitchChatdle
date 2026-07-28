@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import { pool } from './db';
 import { isIntelligible } from './textFilters';
-import { classifyBadges, findRepresentativeBadgeSlugs } from './badges';
+import { classifyAllBadges, ClassifiedBadgeSlug } from './badges';
 import { resolveBadgeImageUrl } from './badgeImages';
-import { RoundHint } from './hints';
+import { BadgeHint, RoundHint } from './hints';
 import {
   getGameDate,
   getMaxMessageLength,
@@ -51,10 +51,27 @@ export interface GuessResult {
   answerHint?: RoundHint;
 }
 
+// Resolves every classified badge in a category to its display badge
+// (label + real image, when one is available) -- unlike the old
+// single-representative-badge design, every badge a chatter has in this
+// IRC-tag category is now shown.
+async function resolveBadgeHints(
+  items: ClassifiedBadgeSlug[],
+  kind: 'channel' | 'global',
+  channel: string
+): Promise<BadgeHint[]> {
+  return Promise.all(
+    items.map(async (item) => ({
+      label: item.label,
+      iconUrl: await resolveBadgeImageUrl(kind, item.slug, item.version, channel),
+    }))
+  );
+}
+
 // Cumulative hint unlocked when advancing to `roundIndex` (0-based, so
 // roundIndex 1 = "round 2"): round 1 has no hint, round 2 reveals the
-// chatter's global Twitch badge, round 3 their chat color, round 4 their
-// channel-specific badge, round 5 their username length.
+// chatter's global Twitch badges, round 3 their chat color, round 4 their
+// channel-specific badges, round 5 their username length.
 async function buildHintForRound(
   roundIndex: number,
   username: string,
@@ -62,25 +79,17 @@ async function buildHintForRound(
   badges: unknown,
   channel: string
 ): Promise<RoundHint | undefined> {
-  const classified = await classifyBadges(badges as Record<string, string> | null, channel);
+  const classified = await classifyAllBadges(badges as Record<string, string> | null, channel);
   switch (roundIndex) {
     case 1: {
-      const { globalSlug, globalVersion } = await findRepresentativeBadgeSlugs(
-        badges as Record<string, string> | null,
-        channel
-      );
-      const globalBadgeIcon = await resolveBadgeImageUrl('global', globalSlug, globalVersion, channel);
-      return { globalBadge: classified.globalBadge, globalBadgeIcon };
+      const globalBadges = await resolveBadgeHints(classified.globalBadges, 'global', channel);
+      return { globalBadges };
     }
     case 2:
       return { color: color || null };
     case 3: {
-      const { channelSlug, channelVersion } = await findRepresentativeBadgeSlugs(
-        badges as Record<string, string> | null,
-        channel
-      );
-      const channelBadgeIcon = await resolveBadgeImageUrl('channel', channelSlug, channelVersion, channel);
-      return { channelBadge: classified.channelBadge, channelBadgeIcon };
+      const channelBadges = await resolveBadgeHints(classified.channelBadges, 'channel', channel);
+      return { channelBadges };
     }
     case 4:
       return { usernameLength: username.length };
@@ -93,21 +102,15 @@ async function buildHintForRound(
 // of which easy-mode hints were actually unlocked along the way -- see
 // GuessResult.answerHint's doc comment above.
 async function buildAnswerHint(badges: unknown, color: string | null, channel: string): Promise<RoundHint> {
-  const classified = await classifyBadges(badges as Record<string, string> | null, channel);
-  const { globalSlug, globalVersion, channelSlug, channelVersion } = await findRepresentativeBadgeSlugs(
-    badges as Record<string, string> | null,
-    channel
-  );
-  const [globalBadgeIcon, channelBadgeIcon] = await Promise.all([
-    resolveBadgeImageUrl('global', globalSlug, globalVersion, channel),
-    resolveBadgeImageUrl('channel', channelSlug, channelVersion, channel),
+  const classified = await classifyAllBadges(badges as Record<string, string> | null, channel);
+  const [globalBadges, channelBadges] = await Promise.all([
+    resolveBadgeHints(classified.globalBadges, 'global', channel),
+    resolveBadgeHints(classified.channelBadges, 'channel', channel),
   ]);
   return {
-    globalBadge: classified.globalBadge,
-    globalBadgeIcon,
+    globalBadges,
     color: color || null,
-    channelBadge: classified.channelBadge,
-    channelBadgeIcon,
+    channelBadges,
   };
 }
 
