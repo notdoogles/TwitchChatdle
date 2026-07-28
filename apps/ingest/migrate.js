@@ -124,12 +124,27 @@ create table if not exists request_log (
 );
 
 create index if not exists idx_request_log_created_at on request_log(created_at);
+
+-- Maps a channel name to its numeric Twitch user ID (the "room-id" IRC
+-- tag, present on every chat message tmi.js delivers -- no Twitch API
+-- credentials needed for *this* lookup). apps/web uses this to look up
+-- that channel's badge set from Twitch's Helix "Get Channel Chat Badges"
+-- API (api.twitch.tv/helix/chat/badges), which is keyed by numeric ID
+-- rather than channel name. Never updated once set (a channel's ID
+-- doesn't change), so apps/ingest just upserts on conflict do nothing.
+create table if not exists channels (
+  channel text primary key,
+  twitch_channel_id text not null,
+  updated_at timestamptz not null default now()
+);
 `;
 
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
-  console.log('Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, request_log');
+  console.log(
+    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, request_log, channels'
+  );
   await pool.end();
 }
 
