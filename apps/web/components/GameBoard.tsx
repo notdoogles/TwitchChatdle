@@ -530,9 +530,6 @@ export default function GameBoard({
             <span className={styles.username}>
               {isOver && showAllMessages ? (
                 <>
-                  {correctUsername && (
-                    <span className={styles.usernameLength}>({correctUsername.length}) </span>
-                  )}
                   <span style={answerHint.color ? { color: answerHint.color } : undefined}>
                     {correctUsername}
                   </span>
@@ -545,6 +542,9 @@ export default function GameBoard({
                 </>
               ) : (
                 <>
+                  {easyMode && hints.usernameLength !== undefined && (
+                    <span className={styles.usernameLength}>({hints.usernameLength}) </span>
+                  )}
                   <span
                     className={styles.usernameMask}
                     style={easyMode && hints.color ? { color: hints.color } : undefined}
