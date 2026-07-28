@@ -150,7 +150,7 @@ export default function GameBoard({
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [countdown, setCountdown] = useState('');
-  const [easyMode, setEasyMode] = useState(false);
+  const [easyMode, setEasyMode] = useState(true);
   const [hints, setHints] = useState<RoundHint>({});
   const [answerHint, setAnswerHint] = useState<RoundHint>({});
   const [announcementOpen, setAnnouncementOpen] = useState(false);
@@ -163,13 +163,15 @@ export default function GameBoard({
 
   // Easy/hard mode is a persistent player preference, independent of any
   // single day's round (unlike the rest of localStorage state below, which
-  // is keyed per game day). Loaded once on mount.
+  // is keyed per game day). Loaded once on mount. Easy mode is the default
+  // for first-time players (no stored preference yet); only an explicit
+  // 'hard' choice opts out.
   useEffect(() => {
     try {
       const stored = localStorage.getItem(`${storagePrefix}${MODE_STORAGE_KEY}`);
-      setEasyMode(stored === 'easy');
+      setEasyMode(stored !== 'hard');
     } catch {
-      // ignore -- default to hard mode
+      // ignore -- default to easy mode
     }
   }, [storagePrefix]);
 
@@ -540,6 +542,9 @@ export default function GameBoard({
                 </>
               ) : (
                 <>
+                  {easyMode && hints.usernameLength !== undefined && (
+                    <span className={styles.usernameLength}>({hints.usernameLength}) </span>
+                  )}
                   <span
                     className={styles.usernameMask}
                     style={easyMode && hints.color ? { color: hints.color } : undefined}

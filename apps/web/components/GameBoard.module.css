@@ -108,6 +108,15 @@
   color: inherit;
 }
 
+/* Character count shown in parentheses before the masked username once the
+   round 5 easy-mode hint reveals it (the mask itself already reflects this
+   length via its question-mark count). Muted so it reads as metadata, not
+   part of the name itself. */
+.usernameLength {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
 /* Easy-mode hint tags (global/channel badge) shown next to the masked
    username. Small and muted so they read as metadata, not as part of the
    chatter's name itself. */
