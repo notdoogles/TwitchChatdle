@@ -42,11 +42,35 @@ export interface ClassifiedBadges {
 }
 
 export function classifyBadges(badges: Record<string, string> | null | undefined): ClassifiedBadges {
-  const slugs = badges ? Object.keys(badges) : [];
-  const channelSlug = CHANNEL_PRIORITY.find((slug) => slugs.includes(slug));
-  const globalSlug = GLOBAL_PRIORITY.find((slug) => slugs.includes(slug));
+  const { channelSlug, globalSlug } = findRepresentativeBadgeSlugs(badges);
   return {
     channelBadge: channelSlug ? CHANNEL_BADGE_LABELS[channelSlug] : null,
     globalBadge: globalSlug ? GLOBAL_BADGE_LABELS[globalSlug] : null,
+  };
+}
+
+export interface RepresentativeBadgeSlugs {
+  channelSlug: string | null;
+  channelVersion: string | null;
+  globalSlug: string | null;
+  globalVersion: string | null;
+}
+
+// Same representative-badge-per-category selection as classifyBadges, but
+// keeps the raw slug + version (e.g. "moderator"/"1") instead of resolving
+// to a display label. lib/badgeImages.ts needs the slug+version pair to
+// look up the actual badge image from Twitch's Badges API, which
+// classifyBadges's label-only return value discards.
+export function findRepresentativeBadgeSlugs(
+  badges: Record<string, string> | null | undefined
+): RepresentativeBadgeSlugs {
+  const slugs = badges ? Object.keys(badges) : [];
+  const channelSlug = CHANNEL_PRIORITY.find((slug) => slugs.includes(slug)) ?? null;
+  const globalSlug = GLOBAL_PRIORITY.find((slug) => slugs.includes(slug)) ?? null;
+  return {
+    channelSlug,
+    channelVersion: channelSlug ? badges![channelSlug] : null,
+    globalSlug,
+    globalVersion: globalSlug ? badges![globalSlug] : null,
   };
 }

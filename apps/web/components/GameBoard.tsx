@@ -112,6 +112,17 @@ function formatCountdown(ms: number): string {
   return `${h}:${m}:${s}`;
 }
 
+// Renders a real Twitch badge image when one was resolved server-side
+// (see lib/badgeImages.ts); falls back to the plain text label (e.g. when
+// badges.twitch.tv is unreachable, or the badge has no channel/global
+// image at all) so the hint is never silently missing.
+function BadgePill({ label, iconUrl }: { label: string; iconUrl?: string | null }) {
+  if (iconUrl) {
+    return <img src={iconUrl} alt={label} title={label} className={styles.badgeIcon} />;
+  }
+  return <span className={styles.badgePill}>{label}</span>;
+}
+
 export default function GameBoard({
   gameName = DEFAULT_GAME_NAME,
   winnerMessage = DEFAULT_WINNER_MESSAGE,
@@ -521,10 +532,10 @@ export default function GameBoard({
                     {correctUsername}
                   </span>
                   {answerHint.globalBadge && (
-                    <span className={styles.badgePill}>{answerHint.globalBadge}</span>
+                    <BadgePill label={answerHint.globalBadge} iconUrl={answerHint.globalBadgeIcon} />
                   )}
                   {answerHint.channelBadge && (
-                    <span className={styles.badgePill}>{answerHint.channelBadge}</span>
+                    <BadgePill label={answerHint.channelBadge} iconUrl={answerHint.channelBadgeIcon} />
                   )}
                 </>
               ) : (
@@ -536,10 +547,10 @@ export default function GameBoard({
                     {usernameMask}
                   </span>
                   {easyMode && hints.globalBadge !== undefined && (
-                    <span className={styles.badgePill}>{hints.globalBadge ?? NONE_LABEL}</span>
+                    <BadgePill label={hints.globalBadge ?? NONE_LABEL} iconUrl={hints.globalBadgeIcon} />
                   )}
                   {easyMode && hints.channelBadge !== undefined && (
-                    <span className={styles.badgePill}>{hints.channelBadge ?? NONE_LABEL}</span>
+                    <BadgePill label={hints.channelBadge ?? NONE_LABEL} iconUrl={hints.channelBadgeIcon} />
                   )}
                 </>
               )}

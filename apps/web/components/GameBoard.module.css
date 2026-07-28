@@ -124,6 +124,14 @@
   color: var(--text-secondary);
 }
 
+/* Real Twitch badge image (see components/GameBoard.tsx's BadgePill),
+   sized to match Twitch chat's own 18px badges. */
+.badgeIcon {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+
 .message {
   color: var(--text-primary);
   /* Messages vary wildly in length and may run several lines; wrap normally

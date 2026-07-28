@@ -10,8 +10,10 @@
 // (round 3) -> channelBadge (round 4) -> usernameLength (round 5).
 export interface RoundHint {
   globalBadge?: string | null;
+  globalBadgeIcon?: string | null;
   color?: string | null;
   channelBadge?: string | null;
+  channelBadgeIcon?: string | null;
   usernameLength?: number;
 }
 

@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { pool } from './db';
 import { isIntelligible } from './textFilters';
-import { classifyBadges } from './badges';
+import { classifyBadges, findRepresentativeBadgeSlugs } from './badges';
+import { resolveBadgeImageUrl } from './badgeImages';
 import { RoundHint } from './hints';
 import {
   getGameDate,
@@ -54,20 +55,53 @@ export interface GuessResult {
 // roundIndex 1 = "round 2"): round 1 has no hint, round 2 reveals the
 // chatter's global Twitch badge, round 3 their chat color, round 4 their
 // channel-specific badge, round 5 their username length.
-function buildHintForRound(roundIndex: number, username: string, color: string | null, badges: unknown): RoundHint | undefined {
+async function buildHintForRound(
+  roundIndex: number,
+  username: string,
+  color: string | null,
+  badges: unknown,
+  channel: string
+): Promise<RoundHint | undefined> {
   const classified = classifyBadges(badges as Record<string, string> | null);
   switch (roundIndex) {
-    case 1:
-      return { globalBadge: classified.globalBadge };
+    case 1: {
+      const { globalSlug, globalVersion } = findRepresentativeBadgeSlugs(badges as Record<string, string> | null);
+      const globalBadgeIcon = await resolveBadgeImageUrl('global', globalSlug, globalVersion, channel);
+      return { globalBadge: classified.globalBadge, globalBadgeIcon };
+    }
     case 2:
       return { color: color || null };
-    case 3:
-      return { channelBadge: classified.channelBadge };
+    case 3: {
+      const { channelSlug, channelVersion } = findRepresentativeBadgeSlugs(badges as Record<string, string> | null);
+      const channelBadgeIcon = await resolveBadgeImageUrl('channel', channelSlug, channelVersion, channel);
+      return { channelBadge: classified.channelBadge, channelBadgeIcon };
+    }
     case 4:
       return { usernameLength: username.length };
     default:
       return undefined;
   }
+}
+
+// Full color/badge reveal shown once a round ends (win or loss), regardless
+// of which easy-mode hints were actually unlocked along the way -- see
+// GuessResult.answerHint's doc comment above.
+async function buildAnswerHint(badges: unknown, color: string | null, channel: string): Promise<RoundHint> {
+  const classified = classifyBadges(badges as Record<string, string> | null);
+  const { globalSlug, globalVersion, channelSlug, channelVersion } = findRepresentativeBadgeSlugs(
+    badges as Record<string, string> | null
+  );
+  const [globalBadgeIcon, channelBadgeIcon] = await Promise.all([
+    resolveBadgeImageUrl('global', globalSlug, globalVersion, channel),
+    resolveBadgeImageUrl('channel', channelSlug, channelVersion, channel),
+  ]);
+  return {
+    globalBadge: classified.globalBadge,
+    globalBadgeIcon,
+    color: color || null,
+    channelBadge: classified.channelBadge,
+    channelBadgeIcon,
+  };
 }
 
 export { getGameDate };
@@ -360,7 +394,7 @@ async function fetchMessagesByIds(messageIds: number[]): Promise<string[]> {
 // server-side "guesses used" counter that different players would stomp on.
 export async function submitGuess(roundId: string, guessRaw: string, guessNumber: number): Promise<GuessResult> {
   const { rows } = await pool.query(
-    `select gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
+    `select gr.channel, gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
      from game_rounds gr
      join users u on u.id = gr.user_id
      left join user_channel_state ucs on ucs.user_id = gr.user_id and ucs.channel = gr.channel
@@ -379,12 +413,7 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
 
   if (correct) {
     const allMessages = await fetchMessagesByIds(round.message_ids);
-    const classified = classifyBadges(round.badges as Record<string, string> | null);
-    const answerHint: RoundHint = {
-      globalBadge: classified.globalBadge,
-      color: round.color || null,
-      channelBadge: classified.channelBadge,
-    };
+    const answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
     return { correct: true, gameOver: true, correctUsername: round.username, allMessages, answerHint };
   }
 
@@ -400,15 +429,10 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
     const nextId = messageIds[nextIndex];
     const { rows: msgRows } = await pool.query('select message_text from messages where id = $1', [nextId]);
     nextMessage = msgRows[0]?.message_text ?? null;
-    hint = buildHintForRound(nextIndex, round.username, round.color, round.badges);
+    hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel);
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids);
-    const classified = classifyBadges(round.badges as Record<string, string> | null);
-    answerHint = {
-      globalBadge: classified.globalBadge,
-      color: round.color || null,
-      channelBadge: classified.channelBadge,
-    };
+    answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
   }
 
   return {
