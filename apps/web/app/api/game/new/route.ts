@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { createRound } from '@/lib/game';
 import { getChannel } from '@/lib/config';
+import { resolveHost } from '@/lib/previewTenant';
 import { getRequestContext } from '@/lib/requestContext';
 import { logRequest } from '@/lib/requestLog';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   waitUntil(logRequest(getRequestContext(req.headers), '/api/game/new'));
 
-  const host = req.headers.get('host');
+  const host = resolveHost(req.headers);
   const channel = getChannel(host);
   if (!channel) {
     return NextResponse.json({ error: 'TWITCH_CHANNEL is not configured on the server.' }, { status: 500 });

@@ -2,11 +2,12 @@ import { headers } from 'next/headers';
 import GameBoard from '@/components/GameBoard';
 import ThemeToggle from '@/components/ThemeToggle';
 import { getGameName, getImagesSlug, getLoserMessage, getResetHour, getResetTimezone, getWinnerMessage } from '@/lib/config';
+import { resolveHost } from '@/lib/previewTenant';
 import { getResultImages } from '@/lib/resultImages';
 import styles from './page.module.css';
 
 export default function Home() {
-  const host = headers().get('host');
+  const host = resolveHost(headers());
   const gameName = getGameName(host);
   const imagesSlug = getImagesSlug(host);
   return (

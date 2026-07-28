@@ -59,17 +59,32 @@ async function refreshExcludedUsernames() {
   console.log(`Excluded usernames loaded (${excludedUsernames.size}):`, [...excludedUsernames].join(', ') || '(none)');
 }
 
-async function upsertUser(twitchUserId, username, displayName, color, badges) {
+async function upsertUser(twitchUserId, username, displayName) {
   const res = await pool.query(
-    `insert into users (twitch_user_id, username, display_name, color, badges)
-     values ($1, $2, $3, $4, $5)
+    `insert into users (twitch_user_id, username, display_name)
+     values ($1, $2, $3)
      on conflict (twitch_user_id)
-     do update set username = excluded.username, display_name = excluded.display_name,
-       color = excluded.color, badges = excluded.badges
+     do update set username = excluded.username, display_name = excluded.display_name
      returning id`,
-    [twitchUserId, username, displayName, color || null, JSON.stringify(badges ?? {})]
+    [twitchUserId, username, displayName]
   );
   return res.rows[0].id;
+}
+
+// Color/badges are scoped per (channel, user) rather than stored globally
+// on `users` -- a chatter's badges (mod/VIP/subscriber) and even their
+// display color are specific to their relationship with *this* channel,
+// and TWITCH_CHANNELS lets one worker log several channels into the same
+// users table, so a global snapshot would leak one channel's badges into
+// another's game.
+async function upsertChannelState(userId, channel, color, badges) {
+  await pool.query(
+    `insert into user_channel_state (user_id, channel, color, badges, updated_at)
+     values ($1, $2, $3, $4, now())
+     on conflict (user_id, channel)
+     do update set color = excluded.color, badges = excluded.badges, updated_at = excluded.updated_at`,
+    [userId, channel, color || null, JSON.stringify(badges ?? {})]
+  );
 }
 
 async function insertMessage(userId, channel, text) {
@@ -92,8 +107,10 @@ client.on('message', async (channel, tags, message, self) => {
   if (isExcluded(username, excludedUsernames)) return;
 
   try {
-    const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username, tags.color, tags.badges);
-    await insertMessage(userId, channel.replace('#', ''), message);
+    const normalizedChannel = channel.replace('#', '');
+    const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username);
+    await upsertChannelState(userId, normalizedChannel, tags.color, tags.badges);
+    await insertMessage(userId, normalizedChannel, message);
   } catch (err) {
     console.error('Failed to log message:', err.message);
   }
