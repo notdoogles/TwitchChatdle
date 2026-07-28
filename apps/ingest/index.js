@@ -94,25 +94,6 @@ async function insertMessage(userId, channel, text) {
   );
 }
 
-// The `room-id` IRC tag (the channel's numeric Twitch user ID) is present
-// on every PRIVMSG tmi.js delivers, so no separate roomstate lookup or
-// Twitch API credentials are needed. A channel's ID never changes once
-// recorded, so this in-memory set skips the upsert after the first
-// message per channel per process lifetime, instead of hitting the DB on
-// every single chat message.
-const channelsWithKnownId = new Set();
-
-async function upsertChannelId(channel, twitchChannelId) {
-  if (!twitchChannelId || channelsWithKnownId.has(channel)) return;
-  await pool.query(
-    `insert into channels (channel, twitch_channel_id)
-     values ($1, $2)
-     on conflict (channel) do nothing`,
-    [channel, twitchChannelId]
-  );
-  channelsWithKnownId.add(channel);
-}
-
 const client = new tmi.Client({
   connection: { reconnect: true, secure: true },
   channels: CHANNELS,
@@ -130,7 +111,6 @@ client.on('message', async (channel, tags, message, self) => {
     const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username);
     await upsertChannelState(userId, normalizedChannel, tags.color, tags.badges);
     await insertMessage(userId, normalizedChannel, message);
-    await upsertChannelId(normalizedChannel, tags['room-id']);
   } catch (err) {
     console.error('Failed to log message:', err.message);
   }
