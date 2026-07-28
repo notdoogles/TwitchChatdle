@@ -87,7 +87,8 @@ tenant's game.
 2. In the Vercel project settings, add env vars: `DATABASE_URL`,
    `TWITCH_CHANNEL`, and optionally `GAME_NAME`, `WINNER_MESSAGE`,
    `LOSER_MESSAGE`, `RESET_HOUR`, `RESET_TIMEZONE`,
-   `USERNAME_HINTS_LIMIT`, and `TOP_CHATTERS_LIMIT` (see `.env.example` for
+   `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`, and
+   `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` (see `.env.example` for
    defaults).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
    connection string (port `6543`), not the direct connection -- Vercel's

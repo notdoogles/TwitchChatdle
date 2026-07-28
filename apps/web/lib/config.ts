@@ -87,6 +87,22 @@ export function getAdminSecret(): string | undefined {
   return process.env.ADMIN_SECRET?.trim() || undefined;
 }
 
+// Twitch app credentials used only to fetch an app access token for the
+// Helix "Get Global/Channel Chat Badges" endpoints (lib/badgeImages.ts) --
+// the legacy unauthenticated badges.twitch.tv endpoint was permanently
+// shut down by Twitch in June 2023. Register a free app at
+// dev.twitch.tv/console/apps to get these. Deliberately not a tenant
+// override, same reasoning as getAdminSecret. Both unset (the default)
+// just means badge hints fall back to their plain text label instead of
+// a real image -- this is optional, not required for the game to work.
+export function getTwitchClientId(): string | undefined {
+  return process.env.TWITCH_CLIENT_ID?.trim() || undefined;
+}
+
+export function getTwitchClientSecret(): string | undefined {
+  return process.env.TWITCH_CLIENT_SECRET?.trim() || undefined;
+}
+
 // Caps the pool of chatters eligible to be picked as a round's answer to
 // the channel's top N by eligible (unique + intelligible) message count.
 // Useful for very active channels where an obscure lurker with just barely

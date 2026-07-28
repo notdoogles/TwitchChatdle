@@ -11,6 +11,8 @@ import {
   slugify,
 } from '@/lib/config';
 import { filterUsernameSuggestions } from '@/lib/usernameSuggestions';
+import { DEFAULT_MASK_LENGTH, NONE_LABEL, RoundHint, maskForHint } from '@/lib/hints';
+import { ANNOUNCEMENT_FEATURES, ANNOUNCEMENT_INTRO, ANNOUNCEMENT_TITLE, CURRENT_ANNOUNCEMENT_VERSION } from '@/lib/announcements';
 
 type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
 
@@ -36,7 +38,19 @@ interface StoredState {
   correctUsername: string | null;
   resultImage: string | null;
   allMessages: string[] | null;
+  hints: RoundHint;
+  // The chatter's full color/badge info once the round ends -- independent
+  // of `hints` (which only reflects however many easy-mode hints were
+  // unlocked during play) so the final reveal always shows the real
+  // chatter's color/badges even after a fast win.
+  answerHint: RoundHint;
 }
+
+// Keys (scoped under storagePrefix, not per-day) for the easy/hard mode
+// preference and the feature-announcement modal's dismissal state.
+const MODE_STORAGE_KEY = 'mode';
+const ANNOUNCEMENT_DISMISSED_KEY = 'announcement-dismissed';
+const ANNOUNCEMENT_SESSION_KEY = 'announcement-session';
 
 // Picks (once) a random image from the given pool, so it stays the same
 // for the rest of the day instead of changing on every re-render. Returns
@@ -98,6 +112,17 @@ function formatCountdown(ms: number): string {
   return `${h}:${m}:${s}`;
 }
 
+// Renders a real Twitch badge image when one was resolved server-side
+// (see lib/badgeImages.ts); falls back to the plain text label (e.g. when
+// badges.twitch.tv is unreachable, or the badge has no channel/global
+// image at all) so the hint is never silently missing.
+function BadgePill({ label, iconUrl }: { label: string; iconUrl?: string | null }) {
+  if (iconUrl) {
+    return <img src={iconUrl} alt={label} title={label} className={styles.badgeIcon} />;
+  }
+  return <span className={styles.badgePill}>{label}</span>;
+}
+
 export default function GameBoard({
   gameName = DEFAULT_GAME_NAME,
   winnerMessage = DEFAULT_WINNER_MESSAGE,
@@ -125,9 +150,68 @@ export default function GameBoard({
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [countdown, setCountdown] = useState('');
+  const [easyMode, setEasyMode] = useState(false);
+  const [hints, setHints] = useState<RoundHint>({});
+  const [answerHint, setAnswerHint] = useState<RoundHint>({});
+  const [announcementOpen, setAnnouncementOpen] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [announcementImage] = useState<string | null>(() => pickResultImage(winnerImages));
   const inputRef = useRef<HTMLInputElement>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const modalCloseRef = useRef<HTMLButtonElement>(null);
+  const announcementCloseRef = useRef<HTMLButtonElement>(null);
+
+  // Easy/hard mode is a persistent player preference, independent of any
+  // single day's round (unlike the rest of localStorage state below, which
+  // is keyed per game day). Loaded once on mount.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`${storagePrefix}${MODE_STORAGE_KEY}`);
+      setEasyMode(stored === 'easy');
+    } catch {
+      // ignore -- default to hard mode
+    }
+  }, [storagePrefix]);
+
+  // Feature-announcement modal: shows once per CURRENT_ANNOUNCEMENT_VERSION
+  // unless the player already permanently dismissed that version
+  // (localStorage) or dismissed it for this browser tab session
+  // (sessionStorage, cleared on next new session).
+  useEffect(() => {
+    try {
+      const version = String(CURRENT_ANNOUNCEMENT_VERSION);
+      const dismissed = localStorage.getItem(`${storagePrefix}${ANNOUNCEMENT_DISMISSED_KEY}`);
+      if (dismissed === version) return;
+      const sessionSeen = sessionStorage.getItem(`${storagePrefix}${ANNOUNCEMENT_SESSION_KEY}`);
+      if (sessionSeen === version) return;
+      setAnnouncementOpen(true);
+    } catch {
+      // ignore -- storage unavailable, just don't show the modal
+    }
+  }, [storagePrefix]);
+
+  function closeAnnouncement() {
+    try {
+      const version = String(CURRENT_ANNOUNCEMENT_VERSION);
+      if (dontShowAgain) {
+        localStorage.setItem(`${storagePrefix}${ANNOUNCEMENT_DISMISSED_KEY}`, version);
+      } else {
+        sessionStorage.setItem(`${storagePrefix}${ANNOUNCEMENT_SESSION_KEY}`, version);
+      }
+    } catch {
+      // ignore -- worst case it reappears next load
+    }
+    setAnnouncementOpen(false);
+  }
+
+  function chooseMode(nextEasy: boolean) {
+    setEasyMode(nextEasy);
+    try {
+      localStorage.setItem(`${storagePrefix}${MODE_STORAGE_KEY}`, nextEasy ? 'easy' : 'hard');
+    } catch {
+      // ignore -- preference just won't persist across reloads
+    }
+  }
 
   // Loads (or resumes) today's round. Runs once per calendar day: the
   // server always returns the same answer for the day, and any saved
@@ -154,6 +238,8 @@ export default function GameBoard({
         setLines(stored.lines);
         setGuesses(stored.guesses);
         setCorrectUsername(stored.correctUsername);
+        setHints(stored.hints ?? {});
+        setAnswerHint(stored.answerHint ?? {});
         setResultImage(
           stored.resultImage ??
             (stored.status === 'won' ? pickResultImage(winnerImages) : stored.status === 'lost' ? pickResultImage(loserImages) : null)
@@ -190,7 +276,9 @@ export default function GameBoard({
             const recovered = await recoverRes.json();
             if (recoverRes.ok && Array.isArray(recovered.allMessages)) {
               setAllMessages(recovered.allMessages);
-              persist(storagePrefix, { ...stored, allMessages: recovered.allMessages });
+              const recoveredAnswerHint = recovered.answerHint ?? {};
+              setAnswerHint(recoveredAnswerHint);
+              persist(storagePrefix, { ...stored, allMessages: recovered.allMessages, answerHint: recoveredAnswerHint });
             }
           } catch {
             // Best-effort recovery -- the transcript falls back to the
@@ -208,11 +296,15 @@ export default function GameBoard({
           correctUsername: null,
           resultImage: null,
           allMessages: null,
+          hints: {},
+          answerHint: {},
         };
         persist(storagePrefix, initial);
         setLines(initial.lines);
         setGuesses([]);
         setCorrectUsername(null);
+        setHints({});
+        setAnswerHint({});
         setResultImage(null);
         setAllMessages(null);
         setModalOpen(false);
@@ -251,9 +343,11 @@ export default function GameBoard({
   }, [lines, showAllMessages, allMessages]);
 
   // While the results modal is open: lock body scroll, close on Escape, and
-  // move focus to its close button for keyboard/screen-reader users.
+  // move focus to its close button for keyboard/screen-reader users. Gated
+  // off while the announcement modal is open -- that one takes precedence
+  // and installs the same kind of listeners/lock itself.
   useEffect(() => {
-    if (!modalOpen) return;
+    if (!modalOpen || announcementOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setModalOpen(false);
     };
@@ -265,7 +359,26 @@ export default function GameBoard({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [modalOpen]);
+  }, [modalOpen, announcementOpen]);
+
+  // While the announcement modal is open: same lock/Escape/focus pattern as
+  // the results modal above, kept separate since the two must never fight
+  // over the same body-overflow/Escape listener at once.
+  useEffect(() => {
+    if (!announcementOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAnnouncement();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    announcementCloseRef.current?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [announcementOpen]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -287,25 +400,32 @@ export default function GameBoard({
       let newCorrectUsername = correctUsername;
       let newResultImage = resultImage;
       let newAllMessages = allMessages;
+      let newHints = hints;
+      let newAnswerHint = answerHint;
 
       if (data.correct) {
         newStatus = 'won';
         newCorrectUsername = data.correctUsername ?? null;
         newResultImage = pickResultImage(winnerImages);
         newAllMessages = data.allMessages ?? null;
+        newAnswerHint = data.answerHint ?? {};
       } else {
         if (data.nextMessage) newLines = [...lines, data.nextMessage];
+        if (data.hint) newHints = { ...hints, ...data.hint };
         if (data.gameOver) {
           newStatus = 'lost';
           newCorrectUsername = data.correctUsername ?? null;
           newResultImage = pickResultImage(loserImages);
           newAllMessages = data.allMessages ?? null;
+          newAnswerHint = data.answerHint ?? {};
         }
       }
 
       setGuesses(newGuesses);
       setLines(newLines);
       setStatus(newStatus);
+      setHints(newHints);
+      setAnswerHint(newAnswerHint);
       setCorrectUsername(newCorrectUsername);
       setResultImage(newResultImage);
       setAllMessages(newAllMessages);
@@ -325,6 +445,8 @@ export default function GameBoard({
         correctUsername: newCorrectUsername,
         resultImage: newResultImage,
         allMessages: newAllMessages,
+        hints: newHints,
+        answerHint: newAnswerHint,
       });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
@@ -333,6 +455,11 @@ export default function GameBoard({
 
   const guessesRemaining = maxGuesses - guesses.length;
   const isOver = status === 'won' || status === 'lost';
+  // Mode is locked once the round has any submitted guesses (or is over) so
+  // switching mid-round can't retroactively hide/reveal hints already
+  // shown; it unlocks again on the next day's fresh round.
+  const modeLocked = guesses.length > 0 || isOver;
+  const usernameMask = easyMode ? maskForHint(hints) : '?'.repeat(DEFAULT_MASK_LENGTH);
 
   const suggestions = filterUsernameSuggestions(usernameHints, guessValue);
   const suggestionsOpen = showSuggestions && suggestions.length > 0;
@@ -373,6 +500,23 @@ export default function GameBoard({
         <span className={styles.dot} />
         <span className={styles.dot} />
         <span className={styles.panelTitle}>chat</span>
+        <div className={styles.modeGroup} role="group" aria-label="Difficulty">
+          {(['hard', 'easy'] as const).map((option) => {
+            const active = easyMode === (option === 'easy');
+            return (
+              <button
+                key={option}
+                type="button"
+                className={active ? styles.modeActive : styles.modeOption}
+                onClick={() => chooseMode(option === 'easy')}
+                disabled={modeLocked}
+                aria-pressed={active}
+              >
+                {option === 'easy' ? 'Easy' : 'Hard'}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div
@@ -381,7 +525,36 @@ export default function GameBoard({
       >
         {displayedLines.map((text, i) => (
           <div key={i} className={styles.chatLine}>
-            <span className={styles.username}>{isOver && showAllMessages ? correctUsername : '???'}</span>
+            <span className={styles.username}>
+              {isOver && showAllMessages ? (
+                <>
+                  <span style={answerHint.color ? { color: answerHint.color } : undefined}>
+                    {correctUsername}
+                  </span>
+                  {answerHint.globalBadge && (
+                    <BadgePill label={answerHint.globalBadge} iconUrl={answerHint.globalBadgeIcon} />
+                  )}
+                  {answerHint.channelBadge && (
+                    <BadgePill label={answerHint.channelBadge} iconUrl={answerHint.channelBadgeIcon} />
+                  )}
+                </>
+              ) : (
+                <>
+                  <span
+                    className={styles.usernameMask}
+                    style={easyMode && hints.color ? { color: hints.color } : undefined}
+                  >
+                    {usernameMask}
+                  </span>
+                  {easyMode && hints.globalBadge !== undefined && (
+                    <BadgePill label={hints.globalBadge ?? NONE_LABEL} iconUrl={hints.globalBadgeIcon} />
+                  )}
+                  {easyMode && hints.channelBadge !== undefined && (
+                    <BadgePill label={hints.channelBadge ?? NONE_LABEL} iconUrl={hints.channelBadgeIcon} />
+                  )}
+                </>
+              )}
+            </span>
             <span className={styles.message}>{text}</span>
           </div>
         ))}
@@ -488,7 +661,7 @@ export default function GameBoard({
       )}
     </div>
 
-    {isOver && modalOpen && (
+    {isOver && modalOpen && !announcementOpen && (
       <div className={styles.modalOverlay} onClick={() => setModalOpen(false)}>
         <div
           className={styles.modalCard}
@@ -530,6 +703,58 @@ export default function GameBoard({
             }}
           >
             View all messages
+          </button>
+        </div>
+      </div>
+    )}
+
+    {announcementOpen && (
+      <div className={styles.modalOverlay} onClick={closeAnnouncement}>
+        <div
+          className={styles.modalCard}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="announcement-heading"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            ref={announcementCloseRef}
+            type="button"
+            className={styles.modalClose}
+            onClick={closeAnnouncement}
+            aria-label="Close announcement"
+          >
+            ×
+          </button>
+
+          <div className={styles.resultBanner}>
+            <h2 id="announcement-heading" className={styles.resultHeading}>
+              {ANNOUNCEMENT_TITLE}
+            </h2>
+            {announcementImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className={styles.resultImage} src={announcementImage} alt="" />
+            )}
+          </div>
+
+          <p className={styles.announcementIntro}>{ANNOUNCEMENT_INTRO}</p>
+          <ul className={styles.announcementFeatures}>
+            {ANNOUNCEMENT_FEATURES.map((feature) => (
+              <li key={feature}>{feature}</li>
+            ))}
+          </ul>
+
+          <label className={styles.announcementCheckboxRow}>
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(e) => setDontShowAgain(e.target.checked)}
+            />
+            Don&apos;t show this again
+          </label>
+
+          <button type="button" className={styles.sendButton} onClick={closeAnnouncement}>
+            Got it
           </button>
         </div>
       </div>
