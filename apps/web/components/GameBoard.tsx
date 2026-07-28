@@ -528,20 +528,50 @@ export default function GameBoard({
         {displayedLines.map((text, i) => (
           <div key={i} className={styles.chatLine}>
             <span className={styles.username}>
+              {/* Twitch renders a chatter's badges right-to-left (the
+                  highest-priority badge sits closest to the username), so
+                  each category's list -- and channel-before-global overall
+                  -- is reversed here to match. */}
               {isOver && showAllMessages ? (
                 <>
+                  {(answerHint.channelBadges ?? [])
+                    .slice()
+                    .reverse()
+                    .map((badge, badgeIndex) => (
+                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    ))}
+                  {(answerHint.globalBadges ?? [])
+                    .slice()
+                    .reverse()
+                    .map((badge, badgeIndex) => (
+                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    ))}
                   <span style={answerHint.color ? { color: answerHint.color } : undefined}>
                     {correctUsername}
                   </span>
-                  {answerHint.globalBadge && (
-                    <BadgePill label={answerHint.globalBadge} iconUrl={answerHint.globalBadgeIcon} />
-                  )}
-                  {answerHint.channelBadge && (
-                    <BadgePill label={answerHint.channelBadge} iconUrl={answerHint.channelBadgeIcon} />
-                  )}
                 </>
               ) : (
                 <>
+                  {easyMode && hints.channelBadges !== undefined && hints.channelBadges.length === 0 && (
+                    <BadgePill label={NONE_LABEL} />
+                  )}
+                  {easyMode &&
+                    (hints.channelBadges ?? [])
+                      .slice()
+                      .reverse()
+                      .map((badge, badgeIndex) => (
+                        <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                      ))}
+                  {easyMode && hints.globalBadges !== undefined && hints.globalBadges.length === 0 && (
+                    <BadgePill label={NONE_LABEL} />
+                  )}
+                  {easyMode &&
+                    (hints.globalBadges ?? [])
+                      .slice()
+                      .reverse()
+                      .map((badge, badgeIndex) => (
+                        <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                      ))}
                   {easyMode && hints.usernameLength !== undefined && (
                     <span className={styles.usernameLength}>({hints.usernameLength}) </span>
                   )}
@@ -551,12 +581,6 @@ export default function GameBoard({
                   >
                     {usernameMask}
                   </span>
-                  {easyMode && hints.globalBadge !== undefined && (
-                    <BadgePill label={hints.globalBadge ?? NONE_LABEL} iconUrl={hints.globalBadgeIcon} />
-                  )}
-                  {easyMode && hints.channelBadge !== undefined && (
-                    <BadgePill label={hints.channelBadge ?? NONE_LABEL} iconUrl={hints.channelBadgeIcon} />
-                  )}
                 </>
               )}
             </span>
@@ -627,6 +651,24 @@ export default function GameBoard({
             Guess
           </button>
         </form>
+      )}
+
+      {/* Wrong guesses so far, shown live as the player makes them so they
+          can see who they've already ruled out -- same list/styling as the
+          end-of-round reveal below, just without the correct/incorrect
+          styling since a correct guess ends the round immediately (nothing
+          in this list, while still playing, can be correct). */}
+      {status === 'playing' && guesses.length > 0 && (
+        <div className={styles.guessHistory}>
+          <ol className={styles.guessList}>
+            {guesses.map((g, i) => (
+              <li key={i} className={styles.guessWrong}>
+                <span className={styles.guessIcon}>❌</span>
+                {g}
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
 
       {status === 'loading' && <div className={styles.loading}>Loading today&apos;s message…</div>}

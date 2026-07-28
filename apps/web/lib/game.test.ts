@@ -11,8 +11,7 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
 // resolveBadgeImageUrl (lib/badgeImages.ts) calls global fetch to hit
 // Twitch's Badges API; stub it out so submitGuess tests stay hermetic
-// (no real network calls) and always fall back to a null icon, same as
-// classifyBadges's null label fallback.
+// (no real network calls) and always fall back to a null icon.
 vi.stubGlobal(
   'fetch',
   vi.fn(async () => ({ ok: false }))
@@ -335,11 +334,9 @@ describe('submitGuess', () => {
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.hint).toBeUndefined();
     expect(result.answerHint).toEqual({
-      globalBadge: 'Prime',
-      globalBadgeIcon: null,
+      globalBadges: [{ label: 'Prime', iconUrl: null }],
       color: '#FF0000',
-      channelBadge: 'Moderator',
-      channelBadgeIcon: null,
+      channelBadges: [{ label: 'Moderator', iconUrl: null }],
     });
   });
 
@@ -356,7 +353,7 @@ describe('submitGuess', () => {
   it('attaches the global badge hint when advancing to round 2', async () => {
     setupSubmitGuessMocks(round, messagesById);
     const result = await submitGuess('round-1', 'bob', 0);
-    expect(result.hint).toEqual({ globalBadge: 'Prime', globalBadgeIcon: null });
+    expect(result.hint).toEqual({ globalBadges: [{ label: 'Prime', iconUrl: null }] });
   });
 
   it('attaches the color hint when advancing to round 3', async () => {
@@ -368,7 +365,7 @@ describe('submitGuess', () => {
   it('attaches the channel badge hint when advancing to round 4', async () => {
     setupSubmitGuessMocks(round, messagesById);
     const result = await submitGuess('round-1', 'bob', 2);
-    expect(result.hint).toEqual({ channelBadge: 'Moderator', channelBadgeIcon: null });
+    expect(result.hint).toEqual({ channelBadges: [{ label: 'Moderator', iconUrl: null }] });
   });
 
   it('attaches the username length hint when advancing to round 5', async () => {
@@ -377,10 +374,10 @@ describe('submitGuess', () => {
     expect(result.hint).toEqual({ usernameLength: 5 });
   });
 
-  it('falls back to null badge/color hints for a chatter with no captured data yet', async () => {
+  it('falls back to empty badge lists / null color hints for a chatter with no captured data yet', async () => {
     setupSubmitGuessMocks({ ...round, color: null, badges: null }, messagesById);
     const globalHint = await submitGuess('round-1', 'bob', 0);
-    expect(globalHint.hint).toEqual({ globalBadge: null, globalBadgeIcon: null });
+    expect(globalHint.hint).toEqual({ globalBadges: [] });
     setupSubmitGuessMocks({ ...round, color: null, badges: null }, messagesById);
     const colorHint = await submitGuess('round-1', 'bob', 1);
     expect(colorHint.hint).toEqual({ color: null });
@@ -401,11 +398,9 @@ describe('submitGuess', () => {
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.nextMessage).toBeNull();
     expect(result.answerHint).toEqual({
-      globalBadge: 'Prime',
-      globalBadgeIcon: null,
+      globalBadges: [{ label: 'Prime', iconUrl: null }],
       color: '#FF0000',
-      channelBadge: 'Moderator',
-      channelBadgeIcon: null,
+      channelBadges: [{ label: 'Moderator', iconUrl: null }],
     });
   });
 });

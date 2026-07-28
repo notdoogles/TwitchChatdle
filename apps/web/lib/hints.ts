@@ -3,17 +3,21 @@
 // import from client components (GameBoard.tsx) without pulling a Postgres
 // driver into the browser bundle.
 
-// A hint's key being present (even with a `null`/falsy value) means that
-// hint has been *revealed*; the value itself is the revealed data (or
-// null/empty to mean "this chatter has none of that"). Keys are set
-// cumulatively, one per guess, in this order: globalBadge (round 2) -> color
-// (round 3) -> channelBadge (round 4) -> usernameLength (round 5).
+// A hint's key being present (even with a `null`/falsy value, or an empty
+// array) means that hint has been *revealed*; the value itself is the
+// revealed data (or null/empty to mean "this chatter has none of that").
+// Keys are set cumulatively, one per guess, in this order: globalBadges
+// (round 2) -> color (round 3) -> channelBadges (round 4) -> usernameLength
+// (round 5).
+export interface BadgeHint {
+  label: string;
+  iconUrl: string | null;
+}
+
 export interface RoundHint {
-  globalBadge?: string | null;
-  globalBadgeIcon?: string | null;
+  globalBadges?: BadgeHint[];
   color?: string | null;
-  channelBadge?: string | null;
-  channelBadgeIcon?: string | null;
+  channelBadges?: BadgeHint[];
   usernameLength?: number;
 }
 
