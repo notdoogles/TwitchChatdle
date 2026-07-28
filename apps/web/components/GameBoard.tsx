@@ -653,6 +653,24 @@ export default function GameBoard({
         </form>
       )}
 
+      {/* Wrong guesses so far, shown live as the player makes them so they
+          can see who they've already ruled out -- same list/styling as the
+          end-of-round reveal below, just without the correct/incorrect
+          styling since a correct guess ends the round immediately (nothing
+          in this list, while still playing, can be correct). */}
+      {status === 'playing' && guesses.length > 0 && (
+        <div className={styles.guessHistory}>
+          <ol className={styles.guessList}>
+            {guesses.map((g, i) => (
+              <li key={i} className={styles.guessWrong}>
+                <span className={styles.guessIcon}>❌</span>
+                {g}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {status === 'loading' && <div className={styles.loading}>Loading today&apos;s message…</div>}
 
       {isOver && (

@@ -299,6 +299,13 @@
   font-size: 14px;
 }
 
+/* Wraps the live in-progress guessList (see GameBoard.tsx) with the same
+   horizontal padding as the rest of the panel's chrome (.loading,
+   .inputRow) since it sits outside .results, which normally supplies it. */
+.guessHistory {
+  padding: 0 14px 16px;
+}
+
 .newRoundButton {
   margin: 12px;
   padding: 10px 16px;
