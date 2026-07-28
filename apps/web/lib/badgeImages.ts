@@ -157,6 +157,27 @@ async function getTwitchChannelId(channel: string): Promise<string | null> {
   return twitchChannelId;
 }
 
+// Live source of truth for "is this slug actually global (or channel-
+// scoped)" per Twitch's Helix API, used by lib/badges.ts to classify
+// badge slugs Twitch has added since CHANNEL_BADGE_LABELS/
+// GLOBAL_BADGE_LABELS were last updated (e.g. "lead_moderator",
+// "social-sharing") without needing a code change every time. Returns
+// null -- not an empty set -- when the API can't be reached (including
+// when TWITCH_CLIENT_ID/SECRET aren't configured), so callers can tell
+// "definitely not global" apart from "couldn't check" and fall back to
+// the static list instead.
+export async function getGlobalBadgeSlugs(): Promise<Set<string> | null> {
+  const globalSets = await fetchBadgeSets(GLOBAL_BADGES_URL);
+  return globalSets ? new Set(Object.keys(globalSets)) : null;
+}
+
+export async function getChannelBadgeSlugs(channel: string): Promise<Set<string> | null> {
+  const twitchChannelId = await getTwitchChannelId(channel);
+  if (!twitchChannelId) return null;
+  const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId));
+  return channelSets ? new Set(Object.keys(channelSets)) : null;
+}
+
 // Resolves a badge slug + version (as found in the IRC `badges` tag, e.g.
 // {"moderator": "1"}) to an actual image URL. `kind` picks which Helix
 // endpoint to try first: channel-specific badges (moderator/vip/

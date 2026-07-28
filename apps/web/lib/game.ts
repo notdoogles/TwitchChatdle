@@ -62,17 +62,23 @@ async function buildHintForRound(
   badges: unknown,
   channel: string
 ): Promise<RoundHint | undefined> {
-  const classified = classifyBadges(badges as Record<string, string> | null);
+  const classified = await classifyBadges(badges as Record<string, string> | null, channel);
   switch (roundIndex) {
     case 1: {
-      const { globalSlug, globalVersion } = findRepresentativeBadgeSlugs(badges as Record<string, string> | null);
+      const { globalSlug, globalVersion } = await findRepresentativeBadgeSlugs(
+        badges as Record<string, string> | null,
+        channel
+      );
       const globalBadgeIcon = await resolveBadgeImageUrl('global', globalSlug, globalVersion, channel);
       return { globalBadge: classified.globalBadge, globalBadgeIcon };
     }
     case 2:
       return { color: color || null };
     case 3: {
-      const { channelSlug, channelVersion } = findRepresentativeBadgeSlugs(badges as Record<string, string> | null);
+      const { channelSlug, channelVersion } = await findRepresentativeBadgeSlugs(
+        badges as Record<string, string> | null,
+        channel
+      );
       const channelBadgeIcon = await resolveBadgeImageUrl('channel', channelSlug, channelVersion, channel);
       return { channelBadge: classified.channelBadge, channelBadgeIcon };
     }
@@ -87,9 +93,10 @@ async function buildHintForRound(
 // of which easy-mode hints were actually unlocked along the way -- see
 // GuessResult.answerHint's doc comment above.
 async function buildAnswerHint(badges: unknown, color: string | null, channel: string): Promise<RoundHint> {
-  const classified = classifyBadges(badges as Record<string, string> | null);
-  const { globalSlug, globalVersion, channelSlug, channelVersion } = findRepresentativeBadgeSlugs(
-    badges as Record<string, string> | null
+  const classified = await classifyBadges(badges as Record<string, string> | null, channel);
+  const { globalSlug, globalVersion, channelSlug, channelVersion } = await findRepresentativeBadgeSlugs(
+    badges as Record<string, string> | null,
+    channel
   );
   const [globalBadgeIcon, channelBadgeIcon] = await Promise.all([
     resolveBadgeImageUrl('global', globalSlug, globalVersion, channel),
