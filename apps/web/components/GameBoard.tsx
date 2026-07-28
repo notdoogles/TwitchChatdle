@@ -528,34 +528,50 @@ export default function GameBoard({
         {displayedLines.map((text, i) => (
           <div key={i} className={styles.chatLine}>
             <span className={styles.username}>
+              {/* Twitch renders a chatter's badges right-to-left (the
+                  highest-priority badge sits closest to the username), so
+                  each category's list -- and channel-before-global overall
+                  -- is reversed here to match. */}
               {isOver && showAllMessages ? (
                 <>
-                  {(answerHint.globalBadges ?? []).map((badge, badgeIndex) => (
-                    <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                  ))}
-                  {(answerHint.channelBadges ?? []).map((badge, badgeIndex) => (
-                    <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                  ))}
+                  {(answerHint.channelBadges ?? [])
+                    .slice()
+                    .reverse()
+                    .map((badge, badgeIndex) => (
+                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    ))}
+                  {(answerHint.globalBadges ?? [])
+                    .slice()
+                    .reverse()
+                    .map((badge, badgeIndex) => (
+                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    ))}
                   <span style={answerHint.color ? { color: answerHint.color } : undefined}>
                     {correctUsername}
                   </span>
                 </>
               ) : (
                 <>
-                  {easyMode && hints.globalBadges !== undefined && hints.globalBadges.length === 0 && (
-                    <BadgePill label={NONE_LABEL} />
-                  )}
-                  {easyMode &&
-                    (hints.globalBadges ?? []).map((badge, badgeIndex) => (
-                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                    ))}
                   {easyMode && hints.channelBadges !== undefined && hints.channelBadges.length === 0 && (
                     <BadgePill label={NONE_LABEL} />
                   )}
                   {easyMode &&
-                    (hints.channelBadges ?? []).map((badge, badgeIndex) => (
-                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                    ))}
+                    (hints.channelBadges ?? [])
+                      .slice()
+                      .reverse()
+                      .map((badge, badgeIndex) => (
+                        <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                      ))}
+                  {easyMode && hints.globalBadges !== undefined && hints.globalBadges.length === 0 && (
+                    <BadgePill label={NONE_LABEL} />
+                  )}
+                  {easyMode &&
+                    (hints.globalBadges ?? [])
+                      .slice()
+                      .reverse()
+                      .map((badge, badgeIndex) => (
+                        <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                      ))}
                   {easyMode && hints.usernameLength !== undefined && (
                     <span className={styles.usernameLength}>({hints.usernameLength}) </span>
                   )}
