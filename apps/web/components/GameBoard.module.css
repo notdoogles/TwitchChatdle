@@ -92,6 +92,21 @@
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.5;
+  /* Row itself lays out username + message, not just their inline flow, so
+     both always align to the same top edge regardless of how many badge
+     pills the username wraps to (a plain inline layout let the username's
+     inline-flex baseline drift from the message's text baseline). */
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Alternating row tint (like Twitch's own chat) so adjacent messages stay
+   easy to tell apart at a glance. Reuses --surface-2, the same subtle
+   "slightly more grey" panel tint used elsewhere (e.g. the header bar). */
+.chatLine:nth-child(even) {
+  background: var(--surface-2);
 }
 
 .username {
@@ -102,6 +117,7 @@
   align-items: center;
   gap: 5px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .usernameMask {
@@ -143,6 +159,11 @@
 
 .message {
   color: var(--text-primary);
+  /* .chatLine is now a flex row (see above) -- without flex:1/min-width:0
+     a flex item won't shrink below its content's natural width, so a long
+     message would overflow the panel instead of wrapping. */
+  flex: 1;
+  min-width: 0;
   /* Messages vary wildly in length and may run several lines; wrap normally
      but also break inside otherwise-unbreakable runs (long URLs, no-space
      copypasta) so nothing overflows the panel horizontally. */
