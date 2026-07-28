@@ -43,6 +43,11 @@ export interface GuessResult {
   // trust boundary as nextMessage itself being revealed ahead of any
   // server-side mode enforcement.
   hint?: RoundHint;
+  // The chatter's full color/badge info, sent once the round ends (win or
+  // loss) regardless of how many easy-mode hints were actually unlocked
+  // along the way, so the final reveal screen can show the real chatter's
+  // color and badges even if the player won before those hints appeared.
+  answerHint?: RoundHint;
 }
 
 // Cumulative hint unlocked when advancing to `roundIndex` (0-based, so
@@ -374,7 +379,13 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
 
   if (correct) {
     const allMessages = await fetchMessagesByIds(round.message_ids);
-    return { correct: true, gameOver: true, correctUsername: round.username, allMessages };
+    const classified = classifyBadges(round.badges as Record<string, string> | null);
+    const answerHint: RoundHint = {
+      globalBadge: classified.globalBadge,
+      color: round.color || null,
+      channelBadge: classified.channelBadge,
+    };
+    return { correct: true, gameOver: true, correctUsername: round.username, allMessages, answerHint };
   }
 
   const nextIndex = guessNumber + 1;
@@ -383,6 +394,7 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
   let nextMessage: string | null = null;
   let allMessages: string[] | undefined;
   let hint: RoundHint | undefined;
+  let answerHint: RoundHint | undefined;
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
@@ -391,6 +403,12 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
     hint = buildHintForRound(nextIndex, round.username, round.color, round.badges);
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids);
+    const classified = classifyBadges(round.badges as Record<string, string> | null);
+    answerHint = {
+      globalBadge: classified.globalBadge,
+      color: round.color || null,
+      channelBadge: classified.channelBadge,
+    };
   }
 
   return {
@@ -401,5 +419,6 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
     correctUsername: gameOver ? round.username : undefined,
     allMessages,
     hint,
+    answerHint,
   };
 }

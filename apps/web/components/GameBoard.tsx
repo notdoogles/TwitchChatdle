@@ -39,6 +39,11 @@ interface StoredState {
   resultImage: string | null;
   allMessages: string[] | null;
   hints: RoundHint;
+  // The chatter's full color/badge info once the round ends -- independent
+  // of `hints` (which only reflects however many easy-mode hints were
+  // unlocked during play) so the final reveal always shows the real
+  // chatter's color/badges even after a fast win.
+  answerHint: RoundHint;
 }
 
 // Keys (scoped under storagePrefix, not per-day) for the easy/hard mode
@@ -136,6 +141,7 @@ export default function GameBoard({
   const [countdown, setCountdown] = useState('');
   const [easyMode, setEasyMode] = useState(false);
   const [hints, setHints] = useState<RoundHint>({});
+  const [answerHint, setAnswerHint] = useState<RoundHint>({});
   const [announcementOpen, setAnnouncementOpen] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const [announcementImage] = useState<string | null>(() => pickResultImage(winnerImages));
@@ -222,6 +228,7 @@ export default function GameBoard({
         setGuesses(stored.guesses);
         setCorrectUsername(stored.correctUsername);
         setHints(stored.hints ?? {});
+        setAnswerHint(stored.answerHint ?? {});
         setResultImage(
           stored.resultImage ??
             (stored.status === 'won' ? pickResultImage(winnerImages) : stored.status === 'lost' ? pickResultImage(loserImages) : null)
@@ -258,7 +265,9 @@ export default function GameBoard({
             const recovered = await recoverRes.json();
             if (recoverRes.ok && Array.isArray(recovered.allMessages)) {
               setAllMessages(recovered.allMessages);
-              persist(storagePrefix, { ...stored, allMessages: recovered.allMessages });
+              const recoveredAnswerHint = recovered.answerHint ?? {};
+              setAnswerHint(recoveredAnswerHint);
+              persist(storagePrefix, { ...stored, allMessages: recovered.allMessages, answerHint: recoveredAnswerHint });
             }
           } catch {
             // Best-effort recovery -- the transcript falls back to the
@@ -277,12 +286,14 @@ export default function GameBoard({
           resultImage: null,
           allMessages: null,
           hints: {},
+          answerHint: {},
         };
         persist(storagePrefix, initial);
         setLines(initial.lines);
         setGuesses([]);
         setCorrectUsername(null);
         setHints({});
+        setAnswerHint({});
         setResultImage(null);
         setAllMessages(null);
         setModalOpen(false);
@@ -379,12 +390,14 @@ export default function GameBoard({
       let newResultImage = resultImage;
       let newAllMessages = allMessages;
       let newHints = hints;
+      let newAnswerHint = answerHint;
 
       if (data.correct) {
         newStatus = 'won';
         newCorrectUsername = data.correctUsername ?? null;
         newResultImage = pickResultImage(winnerImages);
         newAllMessages = data.allMessages ?? null;
+        newAnswerHint = data.answerHint ?? {};
       } else {
         if (data.nextMessage) newLines = [...lines, data.nextMessage];
         if (data.hint) newHints = { ...hints, ...data.hint };
@@ -393,6 +406,7 @@ export default function GameBoard({
           newCorrectUsername = data.correctUsername ?? null;
           newResultImage = pickResultImage(loserImages);
           newAllMessages = data.allMessages ?? null;
+          newAnswerHint = data.answerHint ?? {};
         }
       }
 
@@ -400,6 +414,7 @@ export default function GameBoard({
       setLines(newLines);
       setStatus(newStatus);
       setHints(newHints);
+      setAnswerHint(newAnswerHint);
       setCorrectUsername(newCorrectUsername);
       setResultImage(newResultImage);
       setAllMessages(newAllMessages);
@@ -420,6 +435,7 @@ export default function GameBoard({
         resultImage: newResultImage,
         allMessages: newAllMessages,
         hints: newHints,
+        answerHint: newAnswerHint,
       });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
@@ -500,7 +516,17 @@ export default function GameBoard({
           <div key={i} className={styles.chatLine}>
             <span className={styles.username}>
               {isOver && showAllMessages ? (
-                correctUsername
+                <>
+                  <span style={answerHint.color ? { color: answerHint.color } : undefined}>
+                    {correctUsername}
+                  </span>
+                  {answerHint.globalBadge && (
+                    <span className={styles.badgePill}>{answerHint.globalBadge}</span>
+                  )}
+                  {answerHint.channelBadge && (
+                    <span className={styles.badgePill}>{answerHint.channelBadge}</span>
+                  )}
+                </>
               ) : (
                 <>
                   <span

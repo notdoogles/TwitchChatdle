@@ -325,6 +325,7 @@ describe('submitGuess', () => {
     expect(result.correctUsername).toBe('Alice');
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.hint).toBeUndefined();
+    expect(result.answerHint).toEqual({ globalBadge: 'Prime', color: '#FF0000', channelBadge: 'Moderator' });
   });
 
   it('reveals the next message and decrements guesses remaining on a wrong guess', async () => {
@@ -384,5 +385,6 @@ describe('submitGuess', () => {
     expect(result.correctUsername).toBe('Alice');
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.nextMessage).toBeNull();
+    expect(result.answerHint).toEqual({ globalBadge: 'Prime', color: '#FF0000', channelBadge: 'Moderator' });
   });
 });
