@@ -3,6 +3,7 @@ import { Analytics } from '@vercel/analytics/next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { headers } from 'next/headers';
 import { getGameName } from '@/lib/config';
+import { resolveHost } from '@/lib/previewTenant';
 import SiteFooter from '@/components/SiteFooter';
 import './globals.css';
 
@@ -12,7 +13,7 @@ const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono', displ
 // Async so it can read the request's hostname via headers() and resolve a
 // per-tenant game name in multi-tenant deployments (see lib/tenants.ts).
 export async function generateMetadata(): Promise<Metadata> {
-  const gameName = getGameName(headers().get('host'));
+  const gameName = getGameName(resolveHost(headers()));
   return {
     title: gameName,
     description: 'Guess who sent the chat message.',
