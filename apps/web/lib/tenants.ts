@@ -32,6 +32,9 @@ export interface TenantOverrides {
   // entirely for that tenant.
   adSidebarImage?: string;
   adSidebarText?: string;
+  // Optional extra gif always shown on a win, layered on top of the
+  // random winnerImages pick (see components/GameBoard.tsx).
+  winnerGif?: string;
 }
 
 export const TENANTS: Record<string, TenantOverrides> = {

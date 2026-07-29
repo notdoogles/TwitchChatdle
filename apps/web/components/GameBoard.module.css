@@ -432,6 +432,16 @@
   border-radius: 8px;
 }
 
+/* Optional extra gif always shown on a win (GameBoard.tsx winnerGif prop,
+   sourced from getWinnerGif() in lib/config.ts), layered above the
+   randomly-picked resultImage. */
+.resultGif {
+  max-width: 200px;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
 .guessList {
   list-style: none;
   margin: 0;

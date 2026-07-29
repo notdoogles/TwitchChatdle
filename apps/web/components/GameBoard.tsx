@@ -26,6 +26,9 @@ interface GameBoardProps {
   // are plain env vars and unreadable from the client bundle.
   resetHour?: number;
   resetTimezone?: string;
+  // Optional extra gif always shown on a win, layered on top of the
+  // randomly-picked winnerImages (see getWinnerGif() in lib/config.ts).
+  winnerGif?: string;
 }
 
 interface StoredState {
@@ -131,6 +134,7 @@ export default function GameBoard({
   loserImages = [],
   resetHour,
   resetTimezone,
+  winnerGif,
 }: GameBoardProps) {
   const storagePrefix = `${slugify(gameName)}:`;
   const [status, setStatus] = useState<Status>('loading');
@@ -731,6 +735,10 @@ export default function GameBoard({
             <h2 id="result-heading" className={styles.resultHeading}>
               {status === 'won' ? winnerMessage : loserMessage}
             </h2>
+            {status === 'won' && winnerGif && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className={styles.resultGif} src={winnerGif} alt="" />
+            )}
             {resultImage && (
               // eslint-disable-next-line @next/next/no-img-element
               <img

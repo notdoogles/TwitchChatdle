@@ -88,8 +88,8 @@ tenant's game.
    `TWITCH_CHANNEL`, and optionally `GAME_NAME`, `WINNER_MESSAGE`,
    `LOSER_MESSAGE`, `RESET_HOUR`, `RESET_TIMEZONE`,
    `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`,
-   `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, and `AD_SIDEBAR_IMAGE`/
-   `AD_SIDEBAR_TEXT` (see `.env.example` for defaults).
+   `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, `AD_SIDEBAR_IMAGE`/
+   `AD_SIDEBAR_TEXT`, and `WINNER_GIF` (see `.env.example` for defaults).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
    connection string (port `6543`), not the direct connection -- Vercel's
    serverless functions open a lot of short-lived connections and the
@@ -152,6 +152,9 @@ it's hidden below the mobile breakpoint. Leaving `AD_SIDEBAR_IMAGE` unset
 disables it entirely -- the page renders exactly as if the component didn't
 exist. In a multi-tenant deployment, both env vars can also be overridden
 per-tenant in `lib/tenants.ts`.
+
+Set `WINNER_GIF` to a URL to always show an extra gif on a win, layered on
+top of the randomly-picked winner image above. Unset disables it.
 
 ## Rerolling today's round
 
