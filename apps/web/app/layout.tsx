@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { Analytics } from '@vercel/analytics/next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { headers } from 'next/headers';
-import { getGameName } from '@/lib/config';
+import { getAdSidebarImage, getAdSidebarText, getGameName } from '@/lib/config';
 import { resolveHost } from '@/lib/previewTenant';
 import SiteFooter from '@/components/SiteFooter';
+import AdSidebarLayout from '@/components/AdSidebar';
 import './globals.css';
 
 const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
@@ -35,15 +36,21 @@ const themeInitScript = `
 })();
 `;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// Async so it can read the request's hostname via headers() and resolve a
+// per-tenant AdSidebar config in multi-tenant deployments (see
+// lib/tenants.ts), same as generateMetadata() above.
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const host = resolveHost(headers());
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
-        {children}
-        <SiteFooter />
+        <AdSidebarLayout image={getAdSidebarImage(host)} text={getAdSidebarText(host)}>
+          {children}
+          <SiteFooter />
+        </AdSidebarLayout>
         <Analytics />
       </body>
     </html>

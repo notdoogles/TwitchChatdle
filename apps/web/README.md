@@ -87,9 +87,9 @@ tenant's game.
 2. In the Vercel project settings, add env vars: `DATABASE_URL`,
    `TWITCH_CHANNEL`, and optionally `GAME_NAME`, `WINNER_MESSAGE`,
    `LOSER_MESSAGE`, `RESET_HOUR`, `RESET_TIMEZONE`,
-   `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`, and
-   `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` (see `.env.example` for
-   defaults).
+   `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`,
+   `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, and `AD_SIDEBAR_IMAGE`/
+   `AD_SIDEBAR_TEXT` (see `.env.example` for defaults).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
    connection string (port `6543`), not the direct connection -- Vercel's
    serverless functions open a lot of short-lived connections and the
@@ -143,6 +143,15 @@ the two directories can hold different numbers of images. If a directory is
 empty, no image is shown for that outcome. The list of available images is
 read at build time (`lib/resultImages.ts`), so a new deploy/build is needed
 to pick up newly added images.
+
+## Sponsor sidebar
+
+Set `AD_SIDEBAR_IMAGE` (and optionally `AD_SIDEBAR_TEXT`) to show a sponsor
+sidebar (`components/AdSidebar.tsx`) alongside the game on wide viewports;
+it's hidden below the mobile breakpoint. Leaving `AD_SIDEBAR_IMAGE` unset
+disables it entirely -- the page renders exactly as if the component didn't
+exist. In a multi-tenant deployment, both env vars can also be overridden
+per-tenant in `lib/tenants.ts`.
 
 ## Rerolling today's round
 

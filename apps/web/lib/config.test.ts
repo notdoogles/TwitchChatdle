@@ -21,6 +21,8 @@ import {
   getTopChattersLimit,
   getUsernameHintsLimit,
   getAdminSecret,
+  getAdSidebarImage,
+  getAdSidebarText,
   getWinnerMessage,
   slugify,
 } from './config';
@@ -130,6 +132,32 @@ describe('getAdminSecret', () => {
   it('returns the trimmed env var when set', () => {
     vi.stubEnv('ADMIN_SECRET', '  s3cr3t  ');
     expect(getAdminSecret()).toBe('s3cr3t');
+  });
+});
+
+describe('getAdSidebarImage / getAdSidebarText', () => {
+  it('return undefined when unset or empty', () => {
+    vi.stubEnv('AD_SIDEBAR_IMAGE', '');
+    vi.stubEnv('AD_SIDEBAR_TEXT', '');
+    expect(getAdSidebarImage()).toBeUndefined();
+    expect(getAdSidebarText()).toBeUndefined();
+  });
+
+  it('return the trimmed env var when set', () => {
+    vi.stubEnv('AD_SIDEBAR_IMAGE', '  https://example.com/ad.png  ');
+    vi.stubEnv('AD_SIDEBAR_TEXT', '  Sponsored by Foo  ');
+    expect(getAdSidebarImage()).toBe('https://example.com/ad.png');
+    expect(getAdSidebarText()).toBe('Sponsored by Foo');
+  });
+
+  it('a tenant override takes priority over the env var', () => {
+    vi.stubEnv('AD_SIDEBAR_IMAGE', 'https://example.com/env-ad.png');
+    TENANTS['streamer1.example.com'] = {
+      adSidebarImage: 'https://example.com/tenant-ad.png',
+      adSidebarText: 'Tenant sponsor',
+    };
+    expect(getAdSidebarImage('streamer1.example.com')).toBe('https://example.com/tenant-ad.png');
+    expect(getAdSidebarText('streamer1.example.com')).toBe('Tenant sponsor');
   });
 });
 

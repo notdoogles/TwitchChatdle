@@ -1,0 +1,54 @@
+.bodyRow {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.contentColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.adSidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 260px;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 24px 20px;
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 18px;
+  text-align: center;
+}
+
+.adFooterImage {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.adFooterText {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Mobile breakpoint used across globals.css, page.module.css, and
+   GameBoard.module.css -- keep in sync manually, CSS custom properties
+   can't be referenced inside @media conditions. */
+@media (max-width: 768px) {
+  .adSidebar {
+    display: none;
+  }
+}
