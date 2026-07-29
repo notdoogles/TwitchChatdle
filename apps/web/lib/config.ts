@@ -37,6 +37,18 @@ export function getImagesSlug(host?: string | null): string | undefined {
   return getTenantOverrides(host).imagesSlug || undefined;
 }
 
+// Optional sponsor sidebar shown alongside the game (see
+// components/AdSidebar.tsx). Unset/empty AD_SIDEBAR_IMAGE disables the
+// sidebar entirely, so a deployment that doesn't want one needs zero
+// changes -- it renders exactly as if AdSidebarLayout weren't there.
+export function getAdSidebarImage(host?: string | null): string | undefined {
+  return getTenantOverrides(host).adSidebarImage || process.env.AD_SIDEBAR_IMAGE?.trim() || undefined;
+}
+
+export function getAdSidebarText(host?: string | null): string | undefined {
+  return getTenantOverrides(host).adSidebarText || process.env.AD_SIDEBAR_TEXT?.trim() || undefined;
+}
+
 // Caps the autocomplete hint list shown alongside the guess box. It's just a
 // UX limit (a giant dropdown stops being a useful hint), not a performance
 // constraint, so deployments for very active channels can raise it freely.

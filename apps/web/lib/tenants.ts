@@ -27,6 +27,11 @@ export interface TenantOverrides {
   // from. Falls back to the shared public/static/winners|losers/
   // directories when omitted or when the tenant folder doesn't exist.
   imagesSlug?: string;
+  // Optional sponsor sidebar shown alongside the game (see
+  // components/AdSidebar.tsx). Omitting adSidebarImage disables it
+  // entirely for that tenant.
+  adSidebarImage?: string;
+  adSidebarText?: string;
 }
 
 export const TENANTS: Record<string, TenantOverrides> = {
