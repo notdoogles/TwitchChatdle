@@ -23,6 +23,7 @@ import {
   getAdminSecret,
   getAdSidebarImage,
   getAdSidebarText,
+  getWinnerGif,
   getWinnerMessage,
   slugify,
 } from './config';
@@ -158,6 +159,24 @@ describe('getAdSidebarImage / getAdSidebarText', () => {
     };
     expect(getAdSidebarImage('streamer1.example.com')).toBe('https://example.com/tenant-ad.png');
     expect(getAdSidebarText('streamer1.example.com')).toBe('Tenant sponsor');
+  });
+});
+
+describe('getWinnerGif', () => {
+  it('returns undefined when unset or empty', () => {
+    vi.stubEnv('WINNER_GIF', '');
+    expect(getWinnerGif()).toBeUndefined();
+  });
+
+  it('returns the trimmed env var when set', () => {
+    vi.stubEnv('WINNER_GIF', '  https://example.com/win.gif  ');
+    expect(getWinnerGif()).toBe('https://example.com/win.gif');
+  });
+
+  it('a tenant override takes priority over the env var', () => {
+    vi.stubEnv('WINNER_GIF', 'https://example.com/env-win.gif');
+    TENANTS['streamer1.example.com'] = { winnerGif: 'https://example.com/tenant-win.gif' };
+    expect(getWinnerGif('streamer1.example.com')).toBe('https://example.com/tenant-win.gif');
   });
 });
 

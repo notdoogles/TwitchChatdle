@@ -49,6 +49,12 @@ export function getAdSidebarText(host?: string | null): string | undefined {
   return getTenantOverrides(host).adSidebarText || process.env.AD_SIDEBAR_TEXT?.trim() || undefined;
 }
 
+// Optional extra gif always shown on a win, layered on top of the random
+// winnerImages pick (see GameBoard.tsx). Unset disables it.
+export function getWinnerGif(host?: string | null): string | undefined {
+  return getTenantOverrides(host).winnerGif || process.env.WINNER_GIF?.trim() || undefined;
+}
+
 // Caps the autocomplete hint list shown alongside the guess box. It's just a
 // UX limit (a giant dropdown stops being a useful hint), not a performance
 // constraint, so deployments for very active channels can raise it freely.
