@@ -2,8 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 // Any of these extensions are treated as a valid result image -- the
-// winners/losers directories may contain a mix of formats.
-const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg']);
+// winners/losers directories may contain a mix of formats. Video formats
+// (.mp4/.webm) are also allowed; GameBoard.tsx renders those via <video>
+// instead of <img> based on the same extension check (see isVideoPath).
+const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg', '.mp4', '.webm']);
 
 export type ResultImageKind = 'winners' | 'losers';
 

@@ -64,6 +64,15 @@ function pickResultImage(pool: string[]): string | null {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+// Result media may be a still image or a video (.mp4/.webm) -- dropped into
+// public/static/winners or public/static/losers alongside images (see the
+// matching ALLOWED_EXTENSIONS in lib/resultImages.ts). Used to decide
+// whether to render a <video> instead of an <img> below.
+const VIDEO_EXTENSIONS = ['.mp4', '.webm'];
+function isVideoSrc(src: string): boolean {
+  return VIDEO_EXTENSIONS.some((ext) => src.toLowerCase().endsWith(ext));
+}
+
 // Same game-day boundary the server uses to pick the day's answer
 // (lib/config.ts getGameDate, configurable via RESET_HOUR/RESET_TIMEZONE)
 // -- computed client-side purely to key the localStorage entry, so it
@@ -739,7 +748,10 @@ export default function GameBoard({
               // eslint-disable-next-line @next/next/no-img-element
               <img className={styles.resultGif} src={winnerGif} alt="" />
             )}
-            {resultImage && (
+            {resultImage && isVideoSrc(resultImage) && (
+              <video className={styles.resultImage} src={resultImage} autoPlay muted loop playsInline />
+            )}
+            {resultImage && !isVideoSrc(resultImage) && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 className={styles.resultImage}
@@ -786,7 +798,10 @@ export default function GameBoard({
             <h2 id="announcement-heading" className={styles.resultHeading}>
               {ANNOUNCEMENT_TITLE}
             </h2>
-            {announcementImage && (
+            {announcementImage && isVideoSrc(announcementImage) && (
+              <video className={styles.resultImage} src={announcementImage} autoPlay muted loop playsInline />
+            )}
+            {announcementImage && !isVideoSrc(announcementImage) && (
               // eslint-disable-next-line @next/next/no-img-element
               <img className={styles.resultImage} src={announcementImage} alt="" />
             )}

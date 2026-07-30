@@ -59,6 +59,17 @@ describe('getResultImages', () => {
     ]);
   });
 
+  it('supports video formats alongside images', () => {
+    writeFile('public/static/winners/a.png');
+    writeFile('public/static/winners/b.mp4');
+    writeFile('public/static/winners/c.webm');
+    expect(getResultImages('winners')).toEqual([
+      '/static/winners/a.png',
+      '/static/winners/b.mp4',
+      '/static/winners/c.webm',
+    ]);
+  });
+
   it('returns entries sorted by filename', () => {
     writeFile('public/static/winners/zebra.png');
     writeFile('public/static/winners/apple.png');
