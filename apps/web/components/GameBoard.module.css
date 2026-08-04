@@ -293,6 +293,13 @@
   filter: brightness(1.08);
 }
 
+/* Transient success state for the Share button (see GameBoard.tsx): the
+   accent-filled .sendButton base flips to the success color while the button
+   reads "Copied!". */
+.shareCopied {
+  background: var(--success);
+}
+
 /* Secondary action next to Guess: passes on the current message (consuming a
    guess) without revealing an easy-mode hint. Ghost style so it reads as
    optional next to the primary Guess button. */
@@ -409,6 +416,15 @@
 .modalClose:hover {
   background: var(--surface-2);
   color: var(--text-primary);
+}
+
+/* Rows the results modal's actions (Share / View all messages) so both fit
+   without stacking on narrow screens. */
+.modalActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 
 .results {
