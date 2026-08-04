@@ -474,10 +474,10 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
 }
 
 // Player-facing "skip": advances to the next message and consumes one guess,
-// exactly like a wrong guess -- except no easy-mode hint is revealed (the
-// player chose not to guess, so they don't get the hint a real guess earns).
-// Skipping the round's last message ends it as a loss, same as running out
-// of guesses.
+// exactly like a wrong guess -- including revealing the easy-mode hint the
+// next round would normally unlock, so skipping can't be used to dodge the
+// hint schedule. Skipping the round's last message ends it as a loss, same
+// as running out of guesses.
 export async function skipMessage(roundId: string, guessNumber: number): Promise<GuessResult> {
   const round = await fetchRound(roundId);
 
@@ -490,12 +490,14 @@ export async function skipMessage(roundId: string, guessNumber: number): Promise
 
   let nextMessage: string | null = null;
   let allMessages: string[] | undefined;
+  let hint: RoundHint | undefined;
   let answerHint: RoundHint | undefined;
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
     const { rows: msgRows } = await pool.query('select message_text from messages where id = $1', [nextId]);
     nextMessage = msgRows[0]?.message_text ?? null;
+    hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel);
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids);
     answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
@@ -508,6 +510,7 @@ export async function skipMessage(roundId: string, guessNumber: number): Promise
     nextMessage,
     correctUsername: gameOver ? round.username : undefined,
     allMessages,
+    hint,
     answerHint,
   };
 }
