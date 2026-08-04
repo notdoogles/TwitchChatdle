@@ -24,6 +24,14 @@
   margin: 0 0 4px;
 }
 
+/* Holds the game name and the info/rules button on one line so the icon
+   sits right next to the title. */
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .subtitle {
   font-size: 14px;
   color: var(--text-secondary);

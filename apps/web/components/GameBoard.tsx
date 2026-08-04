@@ -12,7 +12,6 @@ import {
 } from '@/lib/config';
 import { filterUsernameSuggestions } from '@/lib/usernameSuggestions';
 import { DEFAULT_MASK_LENGTH, NONE_LABEL, RoundHint, maskForHint } from '@/lib/hints';
-import { ANNOUNCEMENT_FEATURES, ANNOUNCEMENT_INTRO, ANNOUNCEMENT_TITLE, CURRENT_ANNOUNCEMENT_VERSION } from '@/lib/announcements';
 
 type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
 
@@ -49,11 +48,9 @@ interface StoredState {
   answerHint: RoundHint;
 }
 
-// Keys (scoped under storagePrefix, not per-day) for the easy/hard mode
-// preference and the feature-announcement modal's dismissal state.
+// Key (scoped under storagePrefix, not per-day) for the easy/hard mode
+// preference.
 const MODE_STORAGE_KEY = 'mode';
-const ANNOUNCEMENT_DISMISSED_KEY = 'announcement-dismissed';
-const ANNOUNCEMENT_SESSION_KEY = 'announcement-session';
 
 // Picks (once) a random image from the given pool, so it stays the same
 // for the rest of the day instead of changing on every re-render. Returns
@@ -174,13 +171,9 @@ export default function GameBoard({
   const [easyMode, setEasyMode] = useState(true);
   const [hints, setHints] = useState<RoundHint>({});
   const [answerHint, setAnswerHint] = useState<RoundHint>({});
-  const [announcementOpen, setAnnouncementOpen] = useState(false);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
-  const [announcementImage] = useState<string | null>(() => pickResultImage(winnerImages));
   const inputRef = useRef<HTMLInputElement>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const modalCloseRef = useRef<HTMLButtonElement>(null);
-  const announcementCloseRef = useRef<HTMLButtonElement>(null);
 
   // Easy/hard mode is a persistent player preference, independent of any
   // single day's round (unlike the rest of localStorage state below, which
@@ -195,37 +188,6 @@ export default function GameBoard({
       // ignore -- default to easy mode
     }
   }, [storagePrefix]);
-
-  // Feature-announcement modal: shows once per CURRENT_ANNOUNCEMENT_VERSION
-  // unless the player already permanently dismissed that version
-  // (localStorage) or dismissed it for this browser tab session
-  // (sessionStorage, cleared on next new session).
-  useEffect(() => {
-    try {
-      const version = String(CURRENT_ANNOUNCEMENT_VERSION);
-      const dismissed = localStorage.getItem(`${storagePrefix}${ANNOUNCEMENT_DISMISSED_KEY}`);
-      if (dismissed === version) return;
-      const sessionSeen = sessionStorage.getItem(`${storagePrefix}${ANNOUNCEMENT_SESSION_KEY}`);
-      if (sessionSeen === version) return;
-      setAnnouncementOpen(true);
-    } catch {
-      // ignore -- storage unavailable, just don't show the modal
-    }
-  }, [storagePrefix]);
-
-  function closeAnnouncement() {
-    try {
-      const version = String(CURRENT_ANNOUNCEMENT_VERSION);
-      if (dontShowAgain) {
-        localStorage.setItem(`${storagePrefix}${ANNOUNCEMENT_DISMISSED_KEY}`, version);
-      } else {
-        sessionStorage.setItem(`${storagePrefix}${ANNOUNCEMENT_SESSION_KEY}`, version);
-      }
-    } catch {
-      // ignore -- worst case it reappears next load
-    }
-    setAnnouncementOpen(false);
-  }
 
   function chooseMode(nextEasy: boolean) {
     setEasyMode(nextEasy);
@@ -366,11 +328,9 @@ export default function GameBoard({
   }, [lines, showAllMessages, allMessages]);
 
   // While the results modal is open: lock body scroll, close on Escape, and
-  // move focus to its close button for keyboard/screen-reader users. Gated
-  // off while the announcement modal is open -- that one takes precedence
-  // and installs the same kind of listeners/lock itself.
+  // move focus to its close button for keyboard/screen-reader users.
   useEffect(() => {
-    if (!modalOpen || announcementOpen) return;
+    if (!modalOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setModalOpen(false);
     };
@@ -382,26 +342,7 @@ export default function GameBoard({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [modalOpen, announcementOpen]);
-
-  // While the announcement modal is open: same lock/Escape/focus pattern as
-  // the results modal above, kept separate since the two must never fight
-  // over the same body-overflow/Escape listener at once.
-  useEffect(() => {
-    if (!announcementOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeAnnouncement();
-    };
-    document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    announcementCloseRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [announcementOpen]);
+  }, [modalOpen]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -477,9 +418,9 @@ export default function GameBoard({
   }
 
   // Skips the current message: advances to the next one and consumes a guess,
-  // but -- unlike a real guess -- reveals no easy-mode hint (see
-  // skipMessage in lib/game.ts). Skipping the last message ends the round as
-  // a loss, same as running out of guesses.
+  // revealing the same easy-mode hint a wrong guess would (see skipMessage in
+  // lib/game.ts). Skipping the last message ends the round as a loss, same as
+  // running out of guesses.
   async function handleSkip() {
     if (!roundId || !gameDate || status !== 'playing') return;
 
@@ -499,9 +440,11 @@ export default function GameBoard({
       let newCorrectUsername = correctUsername;
       let newResultImage = resultImage;
       let newAllMessages = allMessages;
+      let newHints = hints;
       let newAnswerHint = answerHint;
 
       if (data.nextMessage) newLines = [...lines, data.nextMessage];
+      if (data.hint) newHints = { ...hints, ...data.hint };
       if (data.gameOver) {
         newStatus = 'lost';
         newCorrectUsername = data.correctUsername ?? null;
@@ -513,6 +456,7 @@ export default function GameBoard({
       setGuesses(newGuesses);
       setLines(newLines);
       setStatus(newStatus);
+      setHints(newHints);
       setAnswerHint(newAnswerHint);
       setCorrectUsername(newCorrectUsername);
       setResultImage(newResultImage);
@@ -533,7 +477,7 @@ export default function GameBoard({
         correctUsername: newCorrectUsername,
         resultImage: newResultImage,
         allMessages: newAllMessages,
-        hints,
+        hints: newHints,
         answerHint: newAnswerHint,
       });
     } catch (err) {
@@ -797,7 +741,7 @@ export default function GameBoard({
       )}
     </div>
 
-    {isOver && modalOpen && !announcementOpen && (
+    {isOver && modalOpen && (
       <div className={styles.modalOverlay} onClick={() => setModalOpen(false)}>
         <div
           className={styles.modalCard}
@@ -851,60 +795,6 @@ export default function GameBoard({
       </div>
     )}
 
-    {announcementOpen && (
-      <div className={styles.modalOverlay} onClick={closeAnnouncement}>
-        <div
-          className={styles.modalCard}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="announcement-heading"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            ref={announcementCloseRef}
-            type="button"
-            className={styles.modalClose}
-            onClick={closeAnnouncement}
-            aria-label="Close announcement"
-          >
-            ×
-          </button>
-
-          <div className={styles.resultBanner}>
-            <h2 id="announcement-heading" className={styles.resultHeading}>
-              {ANNOUNCEMENT_TITLE}
-            </h2>
-            {announcementImage && isVideoSrc(announcementImage) && (
-              <video className={styles.resultImage} src={announcementImage} autoPlay muted loop playsInline />
-            )}
-            {announcementImage && !isVideoSrc(announcementImage) && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img className={styles.resultImage} src={announcementImage} alt="" />
-            )}
-          </div>
-
-          <p className={styles.announcementIntro}>{ANNOUNCEMENT_INTRO}</p>
-          <ul className={styles.announcementFeatures}>
-            {ANNOUNCEMENT_FEATURES.map((feature) => (
-              <li key={feature}>{feature}</li>
-            ))}
-          </ul>
-
-          <label className={styles.announcementCheckboxRow}>
-            <input
-              type="checkbox"
-              checked={dontShowAgain}
-              onChange={(e) => setDontShowAgain(e.target.checked)}
-            />
-            Don&apos;t show this again
-          </label>
-
-          <button type="button" className={styles.sendButton} onClick={closeAnnouncement}>
-            Got it
-          </button>
-        </div>
-      </div>
-    )}
     </>
   );
 }

@@ -427,7 +427,7 @@ describe('skipMessage', () => {
     await expect(skipMessage('round-1', -1)).rejects.toThrow(/Invalid guess index/);
   });
 
-  it('advances to the next message and consumes a guess, but reveals no hint', async () => {
+  it('advances to the next message, consumes a guess, and reveals the same hint a wrong guess would', async () => {
     setupSubmitGuessMocks(round, messagesById);
     const result = await skipMessage('round-1', 0);
     expect(result.correct).toBe(false);
@@ -435,22 +435,20 @@ describe('skipMessage', () => {
     expect(result.guessesRemaining).toBe(4);
     expect(result.nextMessage).toBe('message #2');
     expect(result.allMessages).toBeUndefined();
-    // A skip is a pass, not a guess -- so unlike submitGuess it must not
-    // attach the easy-mode hint the next round would normally unlock.
-    expect(result.hint).toBeUndefined();
+    // A skip counts like a wrong guess: it unlocks the easy-mode hint the
+    // next round would normally reveal.
+    expect(result.hint).toEqual({ globalBadges: [{ label: 'Prime', iconUrl: null }] });
   });
 
-  it('still skips without a hint even when a hint would otherwise unlock', async () => {
+  it('reveals the cumulative easy-mode hint at the same rounds as a wrong guess', async () => {
     setupSubmitGuessMocks(round, messagesById);
-    // Round 2 would normally unlock the global-badge hint (see submitGuess
-    // tests); a skip at the same index must not.
-    const result = await skipMessage('round-1', 0);
-    expect(result.hint).toBeUndefined();
     const roundThree = await skipMessage('round-1', 1);
-    expect(roundThree.hint).toBeUndefined();
+    expect(roundThree.hint).toEqual({ color: '#FF0000' });
+    const roundFour = await skipMessage('round-1', 2);
+    expect(roundFour.hint).toEqual({ channelBadges: [{ label: 'Moderator', iconUrl: null }] });
   });
 
-  it('ends the game as a loss when skipping the last message, revealing the answer without a hint', async () => {
+  it('ends the game as a loss when skipping the last message, revealing the answer with no easy-mode hint (same as a wrong guess at game over)', async () => {
     setupSubmitGuessMocks(round, messagesById);
     const result = await skipMessage('round-1', 4);
     expect(result.correct).toBe(false);

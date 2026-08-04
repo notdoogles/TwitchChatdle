@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import GameBoard from '@/components/GameBoard';
+import RulesModal from '@/components/RulesModal';
 import ThemeToggle from '@/components/ThemeToggle';
 import { getGameName, getImagesSlug, getLoserMessage, getResetHour, getResetTimezone, getWinnerGif, getWinnerMessage } from '@/lib/config';
 import { resolveHost } from '@/lib/previewTenant';
@@ -14,7 +15,10 @@ export default function Home() {
     <main className={styles.main}>
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>{gameName}</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>{gameName}</h1>
+            <RulesModal />
+          </div>
           <p className={styles.subtitle}>Five messages. Five guesses. Who said it?</p>
         </div>
         <ThemeToggle />

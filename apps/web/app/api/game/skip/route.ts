@@ -6,8 +6,9 @@ import { logRequest } from '@/lib/requestLog';
 
 export const dynamic = 'force-dynamic';
 
-// Player-facing skip: advances to the next message and consumes one guess
-// without revealing an easy-mode hint (see skipMessage in lib/game.ts).
+// Player-facing skip: advances to the next message and consumes one guess,
+// revealing the same easy-mode hint a wrong guess would (see skipMessage in
+// lib/game.ts).
 export async function POST(req: Request) {
   waitUntil(logRequest(getRequestContext(req.headers), '/api/game/skip'));
 
