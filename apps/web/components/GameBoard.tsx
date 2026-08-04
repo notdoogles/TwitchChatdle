@@ -12,6 +12,7 @@ import {
 } from '@/lib/config';
 import { filterUsernameSuggestions } from '@/lib/usernameSuggestions';
 import { DEFAULT_MASK_LENGTH, NONE_LABEL, RoundHint, maskForHint } from '@/lib/hints';
+import { SKIPPED_GUESS_LABEL, buildShareText } from '@/lib/shareText';
 
 type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
 
@@ -72,8 +73,8 @@ function isVideoSrc(src: string): boolean {
 
 // Skipped messages are recorded in the same guesses list (so they consume a
 // guess and show up in the round history), but are rendered distinctly from
-// real wrong guesses since they're a pass, not a guess.
-const SKIPPED_GUESS_LABEL = 'Skipped';
+// real wrong guesses since they're a pass, not a guess. The sentinel label is
+// shared with lib/shareText.ts so the share grid matches this UI.
 function isSkippedGuess(g: string): boolean {
   return g === SKIPPED_GUESS_LABEL;
 }
@@ -129,6 +130,30 @@ function formatCountdown(ms: number): string {
   return `${h}:${m}:${s}`;
 }
 
+// Copies `text` to the clipboard, falling back to a hidden-textarea +
+// execCommand('copy') where the async Clipboard API is unavailable (older
+// browsers, non-secure contexts). Rejects if neither path can copy.
+async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall through to the legacy path (e.g. clipboard-write permission denied).
+    }
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand('copy');
+  textarea.remove();
+  if (!ok) throw new Error('Copy failed.');
+}
+
 // Renders a real Twitch badge image when one was resolved server-side
 // (see lib/badgeImages.ts); falls back to the plain text label (e.g. when
 // badges.twitch.tv is unreachable, or the badge has no channel/global
@@ -171,6 +196,9 @@ export default function GameBoard({
   const [easyMode, setEasyMode] = useState(true);
   const [hints, setHints] = useState<RoundHint>({});
   const [answerHint, setAnswerHint] = useState<RoundHint>({});
+  // Feedback for the Share button: 'copied'/'error' are shown on the button
+  // label itself and reset back to 'idle' after a couple of seconds.
+  const [shareState, setShareState] = useState<'idle' | 'copied' | 'error'>('idle');
   const inputRef = useRef<HTMLInputElement>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const modalCloseRef = useRef<HTMLButtonElement>(null);
@@ -205,6 +233,7 @@ export default function GameBoard({
   const loadToday = useCallback(async () => {
     setStatus('loading');
     setErrorMsg(null);
+    setShareState('idle');
     try {
       const today = getGameDate(new Date(), window.location.hostname, { resetHour, resetTimezone });
       cleanupOldEntries(storagePrefix, today);
@@ -485,6 +514,27 @@ export default function GameBoard({
     }
   }
 
+  // Copies a Wordle-style summary of the finished round (see lib/shareText.ts)
+  // to the clipboard; the button label doubles as the success/failure toast.
+  async function handleShare() {
+    if (!gameDate || (status !== 'won' && status !== 'lost')) return;
+    const text = buildShareText({
+      gameName,
+      gameDate,
+      guesses,
+      maxGuesses,
+      status,
+      url: window.location.origin,
+    });
+    try {
+      await copyToClipboard(text);
+      setShareState('copied');
+    } catch {
+      setShareState('error');
+    }
+    window.setTimeout(() => setShareState('idle'), 2000);
+  }
+
   const guessesRemaining = maxGuesses - guesses.length;
   const isOver = status === 'won' || status === 'lost';
   // Mode is locked once the round has any submitted guesses (or is over) so
@@ -523,6 +573,8 @@ export default function GameBoard({
   }
 
   const displayedLines = isOver && showAllMessages && allMessages ? allMessages : lines;
+  const shareLabel = shareState === 'copied' ? 'Copied!' : shareState === 'error' ? 'Copy failed' : 'Share';
+  const shareClass = shareState === 'copied' ? `${styles.sendButton} ${styles.shareCopied}` : styles.sendButton;
 
   return (
     <>
@@ -738,6 +790,10 @@ export default function GameBoard({
             })}
           </ol>
 
+          <button type="button" className={shareClass} onClick={handleShare} aria-live="polite">
+            {shareLabel}
+          </button>
+
           <div className={styles.countdown}>Next chatter in {countdown}</div>
         </div>
       )}
@@ -789,16 +845,21 @@ export default function GameBoard({
             )}
           </div>
 
-          <button
-            type="button"
-            className={styles.sendButton}
-            onClick={() => {
-              setShowAllMessages(true);
-              setModalOpen(false);
-            }}
-          >
-            View all messages
-          </button>
+          <div className={styles.modalActions}>
+            <button type="button" className={shareClass} onClick={handleShare} aria-live="polite">
+              {shareLabel}
+            </button>
+            <button
+              type="button"
+              className={styles.sendButton}
+              onClick={() => {
+                setShowAllMessages(true);
+                setModalOpen(false);
+              }}
+            >
+              View all messages
+            </button>
+          </div>
         </div>
       </div>
     )}
