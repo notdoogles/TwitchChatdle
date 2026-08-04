@@ -73,6 +73,14 @@ function isVideoSrc(src: string): boolean {
   return VIDEO_EXTENSIONS.some((ext) => src.toLowerCase().endsWith(ext));
 }
 
+// Skipped messages are recorded in the same guesses list (so they consume a
+// guess and show up in the round history), but are rendered distinctly from
+// real wrong guesses since they're a pass, not a guess.
+const SKIPPED_GUESS_LABEL = 'Skipped';
+function isSkippedGuess(g: string): boolean {
+  return g === SKIPPED_GUESS_LABEL;
+}
+
 // Same game-day boundary the server uses to pick the day's answer
 // (lib/config.ts getGameDate, configurable via RESET_HOUR/RESET_TIMEZONE)
 // -- computed client-side purely to key the localStorage entry, so it
@@ -468,6 +476,71 @@ export default function GameBoard({
     }
   }
 
+  // Skips the current message: advances to the next one and consumes a guess,
+  // but -- unlike a real guess -- reveals no easy-mode hint (see
+  // skipMessage in lib/game.ts). Skipping the last message ends the round as
+  // a loss, same as running out of guesses.
+  async function handleSkip() {
+    if (!roundId || !gameDate || status !== 'playing') return;
+
+    const guessNumber = guesses.length;
+    try {
+      const res = await fetch('/api/game/skip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roundId, guessNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not skip that message.');
+
+      const newGuesses = [...guesses, SKIPPED_GUESS_LABEL];
+      let newLines = lines;
+      let newStatus: Status = 'playing';
+      let newCorrectUsername = correctUsername;
+      let newResultImage = resultImage;
+      let newAllMessages = allMessages;
+      let newAnswerHint = answerHint;
+
+      if (data.nextMessage) newLines = [...lines, data.nextMessage];
+      if (data.gameOver) {
+        newStatus = 'lost';
+        newCorrectUsername = data.correctUsername ?? null;
+        newResultImage = pickResultImage(loserImages);
+        newAllMessages = data.allMessages ?? null;
+        newAnswerHint = data.answerHint ?? {};
+      }
+
+      setGuesses(newGuesses);
+      setLines(newLines);
+      setStatus(newStatus);
+      setAnswerHint(newAnswerHint);
+      setCorrectUsername(newCorrectUsername);
+      setResultImage(newResultImage);
+      setAllMessages(newAllMessages);
+      setModalOpen(newStatus === 'lost');
+      setShowAllMessages(false);
+      setGuessValue('');
+      setShowSuggestions(false);
+      setActiveSuggestion(-1);
+
+      persist(storagePrefix, {
+        gameDate,
+        roundId,
+        maxGuesses,
+        lines: newLines,
+        guesses: newGuesses,
+        status: newStatus,
+        correctUsername: newCorrectUsername,
+        resultImage: newResultImage,
+        allMessages: newAllMessages,
+        hints,
+        answerHint: newAnswerHint,
+      });
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
+
   const guessesRemaining = maxGuesses - guesses.length;
   const isOver = status === 'won' || status === 'lost';
   // Mode is locked once the round has any submitted guesses (or is over) so
@@ -660,6 +733,9 @@ export default function GameBoard({
               </ul>
             )}
           </div>
+          <button type="button" className={styles.skipButton} onClick={handleSkip}>
+            Skip
+          </button>
           <button type="submit" className={styles.sendButton}>
             Guess
           </button>
@@ -675,8 +751,8 @@ export default function GameBoard({
         <div className={styles.guessHistory}>
           <ol className={styles.guessList}>
             {guesses.map((g, i) => (
-              <li key={i} className={styles.guessWrong}>
-                <span className={styles.guessIcon}>❌</span>
+              <li key={i} className={isSkippedGuess(g) ? styles.guessSkipped : styles.guessWrong}>
+                {!isSkippedGuess(g) && <span className={styles.guessIcon}>❌</span>}
                 {g}
               </li>
             ))}
@@ -702,8 +778,8 @@ export default function GameBoard({
             {guesses.map((g, i) => {
               const isCorrect = correctUsername !== null && g.trim().toLowerCase() === correctUsername.toLowerCase();
               return (
-                <li key={i} className={isCorrect ? styles.guessCorrect : styles.guessWrong}>
-                  <span className={styles.guessIcon}>{isCorrect ? '✅' : '❌'}</span>
+                <li key={i} className={isSkippedGuess(g) ? styles.guessSkipped : isCorrect ? styles.guessCorrect : styles.guessWrong}>
+                  {!isSkippedGuess(g) && <span className={styles.guessIcon}>{isCorrect ? '✅' : '❌'}</span>}
                   {g}
                 </li>
               );

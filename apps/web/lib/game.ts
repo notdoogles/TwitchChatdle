@@ -398,12 +398,20 @@ async function fetchMessagesByIds(messageIds: number[]): Promise<string[]> {
   return texts;
 }
 
-// Grading is stateless and per-request: the client tracks how many guesses
-// it has already used (in localStorage) and passes that count in. This lets
-// every player attempt the same shared daily round independently without a
-// server-side "guesses used" counter that different players would stomp on.
-export async function submitGuess(roundId: string, guessRaw: string, guessNumber: number): Promise<GuessResult> {
-  const { rows } = await pool.query(
+interface RoundRow {
+  channel: string;
+  message_ids: number[];
+  max_guesses: number;
+  username: string;
+  color: string | null;
+  badges: unknown;
+}
+
+// Shared round lookup for submitGuess/skipMessage -- both need the round's
+// channel/messages/answer and the answerer's color/badge data, and both fail
+// identically when the round can't be found.
+async function fetchRound(roundId: string): Promise<RoundRow> {
+  const { rows } = await pool.query<RoundRow>(
     `select gr.channel, gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
      from game_rounds gr
      join users u on u.id = gr.user_id
@@ -412,7 +420,15 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
     [roundId]
   );
   if (rows.length === 0) throw new Error("Round not found -- refresh to get today's round.");
-  const round = rows[0];
+  return rows[0];
+}
+
+// Grading is stateless and per-request: the client tracks how many guesses
+// it has already used (in localStorage) and passes that count in. This lets
+// every player attempt the same shared daily round independently without a
+// server-side "guesses used" counter that different players would stomp on.
+export async function submitGuess(roundId: string, guessRaw: string, guessNumber: number): Promise<GuessResult> {
+  const round = await fetchRound(roundId);
 
   if (!Number.isInteger(guessNumber) || guessNumber < 0 || guessNumber >= round.max_guesses) {
     throw new Error('Invalid guess index.');
@@ -453,6 +469,45 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
     correctUsername: gameOver ? round.username : undefined,
     allMessages,
     hint,
+    answerHint,
+  };
+}
+
+// Player-facing "skip": advances to the next message and consumes one guess,
+// exactly like a wrong guess -- except no easy-mode hint is revealed (the
+// player chose not to guess, so they don't get the hint a real guess earns).
+// Skipping the round's last message ends it as a loss, same as running out
+// of guesses.
+export async function skipMessage(roundId: string, guessNumber: number): Promise<GuessResult> {
+  const round = await fetchRound(roundId);
+
+  if (!Number.isInteger(guessNumber) || guessNumber < 0 || guessNumber >= round.max_guesses) {
+    throw new Error('Invalid guess index.');
+  }
+
+  const nextIndex = guessNumber + 1;
+  const gameOver = nextIndex >= round.max_guesses;
+
+  let nextMessage: string | null = null;
+  let allMessages: string[] | undefined;
+  let answerHint: RoundHint | undefined;
+  if (!gameOver) {
+    const messageIds: number[] = round.message_ids;
+    const nextId = messageIds[nextIndex];
+    const { rows: msgRows } = await pool.query('select message_text from messages where id = $1', [nextId]);
+    nextMessage = msgRows[0]?.message_text ?? null;
+  } else {
+    allMessages = await fetchMessagesByIds(round.message_ids);
+    answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
+  }
+
+  return {
+    correct: false,
+    gameOver,
+    guessesRemaining: round.max_guesses - nextIndex,
+    nextMessage,
+    correctUsername: gameOver ? round.username : undefined,
+    allMessages,
     answerHint,
   };
 }
