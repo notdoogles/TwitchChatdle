@@ -646,6 +646,14 @@ export default function GameBoard({
               onKeyDown={handleGuessKeyDown}
               placeholder="Guess a username..."
               autoComplete="off"
+              // autoComplete="off" alone doesn't stop password managers from
+              // offering to fill a text input, so opt out explicitly per vendor.
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-bwignore="true"
+              data-dashlaneignore="true"
+              data-roboformignore="true"
+              data-form-type="other"
               role="combobox"
               aria-expanded={suggestionsOpen}
               aria-controls="username-suggestions"
