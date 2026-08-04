@@ -293,6 +293,25 @@
   filter: brightness(1.08);
 }
 
+/* Secondary action next to Guess: passes on the current message (consuming a
+   guess) without revealing an easy-mode hint. Ghost style so it reads as
+   optional next to the primary Guess button. */
+.skipButton {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.skipButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .loading {
   padding: 0 14px 16px;
   color: var(--text-secondary);

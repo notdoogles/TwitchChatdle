@@ -5,7 +5,7 @@ vi.mock('./db', () => ({
 }));
 
 import { pool } from './db';
-import { createRound, rerollRound, submitGuess } from './game';
+import { createRound, rerollRound, skipMessage, submitGuess } from './game';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -397,6 +397,68 @@ describe('submitGuess', () => {
     expect(result.correctUsername).toBe('Alice');
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.nextMessage).toBeNull();
+    expect(result.answerHint).toEqual({
+      globalBadges: [{ label: 'Prime', iconUrl: null }],
+      color: '#FF0000',
+      channelBadges: [{ label: 'Moderator', iconUrl: null }],
+    });
+  });
+});
+
+describe('skipMessage', () => {
+  const messageIds = [1, 2, 3, 4, 5];
+  const messagesById = new Map(messageIds.map((id) => [id, `message #${id}`]));
+  const round = {
+    message_ids: messageIds,
+    max_guesses: 5,
+    username: 'Alice',
+    color: '#FF0000',
+    badges: { moderator: '1', premium: '1' },
+  };
+
+  it('throws for an unknown roundId', async () => {
+    setupSubmitGuessMocks(null, messagesById);
+    await expect(skipMessage('missing-round', 0)).rejects.toThrow(/Round not found/);
+  });
+
+  it('rejects an out-of-range guessNumber', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    await expect(skipMessage('round-1', 5)).rejects.toThrow(/Invalid guess index/);
+    await expect(skipMessage('round-1', -1)).rejects.toThrow(/Invalid guess index/);
+  });
+
+  it('advances to the next message and consumes a guess, but reveals no hint', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await skipMessage('round-1', 0);
+    expect(result.correct).toBe(false);
+    expect(result.gameOver).toBe(false);
+    expect(result.guessesRemaining).toBe(4);
+    expect(result.nextMessage).toBe('message #2');
+    expect(result.allMessages).toBeUndefined();
+    // A skip is a pass, not a guess -- so unlike submitGuess it must not
+    // attach the easy-mode hint the next round would normally unlock.
+    expect(result.hint).toBeUndefined();
+  });
+
+  it('still skips without a hint even when a hint would otherwise unlock', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    // Round 2 would normally unlock the global-badge hint (see submitGuess
+    // tests); a skip at the same index must not.
+    const result = await skipMessage('round-1', 0);
+    expect(result.hint).toBeUndefined();
+    const roundThree = await skipMessage('round-1', 1);
+    expect(roundThree.hint).toBeUndefined();
+  });
+
+  it('ends the game as a loss when skipping the last message, revealing the answer without a hint', async () => {
+    setupSubmitGuessMocks(round, messagesById);
+    const result = await skipMessage('round-1', 4);
+    expect(result.correct).toBe(false);
+    expect(result.gameOver).toBe(true);
+    expect(result.correctUsername).toBe('Alice');
+    expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
+    expect(result.nextMessage).toBeNull();
+    expect(result.hint).toBeUndefined();
     expect(result.answerHint).toEqual({
       globalBadges: [{ label: 'Prime', iconUrl: null }],
       color: '#FF0000',
