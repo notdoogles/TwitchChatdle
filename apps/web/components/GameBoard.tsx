@@ -76,7 +76,7 @@ function isVideoSrc(src: string): boolean {
 // Skipped messages are recorded in the same guesses list (so they consume a
 // guess and show up in the round history), but are rendered distinctly from
 // real wrong guesses since they're a pass, not a guess.
-const SKIPPED_GUESS_LABEL = '⏭ Skipped';
+const SKIPPED_GUESS_LABEL = 'Skipped';
 function isSkippedGuess(g: string): boolean {
   return g === SKIPPED_GUESS_LABEL;
 }
@@ -751,8 +751,8 @@ export default function GameBoard({
         <div className={styles.guessHistory}>
           <ol className={styles.guessList}>
             {guesses.map((g, i) => (
-              <li key={i} className={styles.guessWrong}>
-                <span className={styles.guessIcon}>{isSkippedGuess(g) ? '⏭' : '❌'}</span>
+              <li key={i} className={isSkippedGuess(g) ? styles.guessSkipped : styles.guessWrong}>
+                {!isSkippedGuess(g) && <span className={styles.guessIcon}>❌</span>}
                 {g}
               </li>
             ))}
@@ -778,8 +778,8 @@ export default function GameBoard({
             {guesses.map((g, i) => {
               const isCorrect = correctUsername !== null && g.trim().toLowerCase() === correctUsername.toLowerCase();
               return (
-                <li key={i} className={isCorrect ? styles.guessCorrect : styles.guessWrong}>
-                  <span className={styles.guessIcon}>{isSkippedGuess(g) ? '⏭' : isCorrect ? '✅' : '❌'}</span>
+                <li key={i} className={isSkippedGuess(g) ? styles.guessSkipped : isCorrect ? styles.guessCorrect : styles.guessWrong}>
+                  {!isSkippedGuess(g) && <span className={styles.guessIcon}>{isCorrect ? '✅' : '❌'}</span>}
                   {g}
                 </li>
               );

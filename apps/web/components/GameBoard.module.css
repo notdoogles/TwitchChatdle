@@ -495,6 +495,13 @@
   opacity: 0.85;
 }
 
+/* A skipped message (see GameBoard.tsx's SKIPPED_GUESS_LABEL): rendered as a
+   plain italic "Skipped" row with no icon, since it's a pass rather than a
+   wrong guess. */
+.guessSkipped {
+  font-style: italic;
+}
+
 .countdown {
   font-family: var(--font-mono);
   font-size: 13px;
