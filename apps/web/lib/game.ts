@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { pool } from './db';
+import { getPool } from './db';
 import { isIntelligible } from './textFilters';
 import { classifyAllBadges, ClassifiedBadgeSlug } from './badges';
 import { resolveBadgeImageUrl } from './badgeImages';
@@ -58,12 +58,13 @@ export interface GuessResult {
 async function resolveBadgeHints(
   items: ClassifiedBadgeSlug[],
   kind: 'channel' | 'global',
-  channel: string
+  channel: string,
+  host?: string | null
 ): Promise<BadgeHint[]> {
   return Promise.all(
     items.map(async (item) => ({
       label: item.label,
-      iconUrl: await resolveBadgeImageUrl(kind, item.slug, item.version, channel),
+      iconUrl: await resolveBadgeImageUrl(kind, item.slug, item.version, channel, host),
     }))
   );
 }
@@ -77,18 +78,19 @@ async function buildHintForRound(
   username: string,
   color: string | null,
   badges: unknown,
-  channel: string
+  channel: string,
+  host?: string | null
 ): Promise<RoundHint | undefined> {
-  const classified = await classifyAllBadges(badges as Record<string, string> | null, channel);
+  const classified = await classifyAllBadges(badges as Record<string, string> | null, channel, host);
   switch (roundIndex) {
     case 1: {
-      const globalBadges = await resolveBadgeHints(classified.globalBadges, 'global', channel);
+      const globalBadges = await resolveBadgeHints(classified.globalBadges, 'global', channel, host);
       return { globalBadges };
     }
     case 2:
       return { color: color || null };
     case 3: {
-      const channelBadges = await resolveBadgeHints(classified.channelBadges, 'channel', channel);
+      const channelBadges = await resolveBadgeHints(classified.channelBadges, 'channel', channel, host);
       return { channelBadges };
     }
     case 4:
@@ -101,11 +103,16 @@ async function buildHintForRound(
 // Full color/badge reveal shown once a round ends (win or loss), regardless
 // of which easy-mode hints were actually unlocked along the way -- see
 // GuessResult.answerHint's doc comment above.
-async function buildAnswerHint(badges: unknown, color: string | null, channel: string): Promise<RoundHint> {
-  const classified = await classifyAllBadges(badges as Record<string, string> | null, channel);
+async function buildAnswerHint(
+  badges: unknown,
+  color: string | null,
+  channel: string,
+  host?: string | null
+): Promise<RoundHint> {
+  const classified = await classifyAllBadges(badges as Record<string, string> | null, channel, host);
   const [globalBadges, channelBadges] = await Promise.all([
-    resolveBadgeHints(classified.globalBadges, 'global', channel),
-    resolveBadgeHints(classified.channelBadges, 'channel', channel),
+    resolveBadgeHints(classified.globalBadges, 'global', channel, host),
+    resolveBadgeHints(classified.channelBadges, 'channel', channel, host),
   ]);
   return {
     globalBadges,
@@ -155,7 +162,7 @@ function seededShuffle<T>(arr: T[], rng: () => number): T[] {
 // intelligibility heuristic (see lib/textFilters.ts). Length >= 12 is
 // pushed into SQL to cut down rows before the JS filter runs.
 async function fetchCandidateMessages(channel: string, host?: string | null): Promise<CandidateRow[]> {
-  const { rows } = await pool.query<CandidateRow>(
+  const { rows } = await getPool(host).query<CandidateRow>(
     `
     with normalized as (
       select
@@ -197,7 +204,7 @@ export async function createRound(channel: string, host?: string | null): Promis
   // and never omits one who could.
   const allUsernames = eligible.map(([, msgs]) => msgs[0].username).sort();
 
-  const existing = await pool.query(
+  const existing = await getPool(host).query(
     `select gr.id, gr.message_ids, gr.max_guesses
      from game_rounds gr
      where gr.channel = $1 and gr.game_date = $2`,
@@ -211,7 +218,7 @@ export async function createRound(channel: string, host?: string | null): Promis
   const { userId, chosen } = pickRoundCandidate(eligible, roundSeed(channel, gameDate, 0));
 
   const roundId = crypto.randomUUID();
-  const inserted = await pool.query(
+  const inserted = await getPool(host).query(
     `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant)
      values ($1, $2, $3, $4, $5, $6, 0)
      on conflict (channel, game_date) do nothing
@@ -221,7 +228,7 @@ export async function createRound(channel: string, host?: string | null): Promis
 
   if (inserted.rows.length === 0) {
     // Another request won the race and already created today's round.
-    const { rows } = await pool.query(
+    const { rows } = await getPool(host).query(
       `select id, message_ids, max_guesses from game_rounds where channel = $1 and game_date = $2`,
       [channel, gameDate]
     );
@@ -243,7 +250,7 @@ export async function rerollRound(channel: string, host?: string | null): Promis
   const eligible = computeEligibleChatters(candidates, host);
   const allUsernames = eligible.map(([, msgs]) => msgs[0].username).sort();
 
-  const existing = await pool.query<{ variant: number }>(
+  const existing = await getPool(host).query<{ variant: number }>(
     `select variant from game_rounds where channel = $1 and game_date = $2`,
     [channel, gameDate]
   );
@@ -251,7 +258,7 @@ export async function rerollRound(channel: string, host?: string | null): Promis
   const { userId, chosen } = pickRoundCandidate(eligible, roundSeed(channel, gameDate, nextVariant));
 
   const roundId = crypto.randomUUID();
-  const { rows } = await pool.query(
+  const { rows } = await getPool(host).query(
     `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant)
      values ($1, $2, $3, $4, $5, $6, $7)
      on conflict (channel, game_date) do update
@@ -338,7 +345,7 @@ async function buildNewRoundFromRow(
   maxGuesses: number,
   host?: string | null
 ): Promise<NewRound> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool(host).query(
     `select m.message_text, u.username
      from messages m
      join users u on u.id = m.user_id
@@ -386,10 +393,10 @@ function capUsernameHints(allUsernames: string[], correctUsername: string | unde
 // below) rather than a batched `where id = any(...)` + JS-side remap --
 // Postgres can return bigint columns as strings, which would silently
 // break a Map keyed by the numeric ids from game_rounds.message_ids.
-async function fetchMessagesByIds(messageIds: number[]): Promise<string[]> {
+async function fetchMessagesByIds(messageIds: number[], host?: string | null): Promise<string[]> {
   const texts: string[] = [];
   for (const id of messageIds) {
-    const { rows } = await pool.query<{ message_text: string }>(
+    const { rows } = await getPool(host).query<{ message_text: string }>(
       'select message_text from messages where id = $1',
       [id]
     );
@@ -410,8 +417,8 @@ interface RoundRow {
 // Shared round lookup for submitGuess/skipMessage -- both need the round's
 // channel/messages/answer and the answerer's color/badge data, and both fail
 // identically when the round can't be found.
-async function fetchRound(roundId: string): Promise<RoundRow> {
-  const { rows } = await pool.query<RoundRow>(
+async function fetchRound(roundId: string, host?: string | null): Promise<RoundRow> {
+  const { rows } = await getPool(host).query<RoundRow>(
     `select gr.channel, gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
      from game_rounds gr
      join users u on u.id = gr.user_id
@@ -427,8 +434,13 @@ async function fetchRound(roundId: string): Promise<RoundRow> {
 // it has already used (in localStorage) and passes that count in. This lets
 // every player attempt the same shared daily round independently without a
 // server-side "guesses used" counter that different players would stomp on.
-export async function submitGuess(roundId: string, guessRaw: string, guessNumber: number): Promise<GuessResult> {
-  const round = await fetchRound(roundId);
+export async function submitGuess(
+  roundId: string,
+  guessRaw: string,
+  guessNumber: number,
+  host?: string | null
+): Promise<GuessResult> {
+  const round = await fetchRound(roundId, host);
 
   if (!Number.isInteger(guessNumber) || guessNumber < 0 || guessNumber >= round.max_guesses) {
     throw new Error('Invalid guess index.');
@@ -438,8 +450,8 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
   const correct = guess.length > 0 && guess === round.username.toLowerCase();
 
   if (correct) {
-    const allMessages = await fetchMessagesByIds(round.message_ids);
-    const answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
+    const allMessages = await fetchMessagesByIds(round.message_ids, host);
+    const answerHint = await buildAnswerHint(round.badges, round.color, round.channel, host);
     return { correct: true, gameOver: true, correctUsername: round.username, allMessages, answerHint };
   }
 
@@ -453,12 +465,12 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
-    const { rows: msgRows } = await pool.query('select message_text from messages where id = $1', [nextId]);
+    const { rows: msgRows } = await getPool(host).query('select message_text from messages where id = $1', [nextId]);
     nextMessage = msgRows[0]?.message_text ?? null;
-    hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel);
+    hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel, host);
   } else {
-    allMessages = await fetchMessagesByIds(round.message_ids);
-    answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
+    allMessages = await fetchMessagesByIds(round.message_ids, host);
+    answerHint = await buildAnswerHint(round.badges, round.color, round.channel, host);
   }
 
   return {
@@ -478,8 +490,8 @@ export async function submitGuess(roundId: string, guessRaw: string, guessNumber
 // next round would normally unlock, so skipping can't be used to dodge the
 // hint schedule. Skipping the round's last message ends it as a loss, same
 // as running out of guesses.
-export async function skipMessage(roundId: string, guessNumber: number): Promise<GuessResult> {
-  const round = await fetchRound(roundId);
+export async function skipMessage(roundId: string, guessNumber: number, host?: string | null): Promise<GuessResult> {
+  const round = await fetchRound(roundId, host);
 
   if (!Number.isInteger(guessNumber) || guessNumber < 0 || guessNumber >= round.max_guesses) {
     throw new Error('Invalid guess index.');
@@ -495,12 +507,12 @@ export async function skipMessage(roundId: string, guessNumber: number): Promise
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
-    const { rows: msgRows } = await pool.query('select message_text from messages where id = $1', [nextId]);
+    const { rows: msgRows } = await getPool(host).query('select message_text from messages where id = $1', [nextId]);
     nextMessage = msgRows[0]?.message_text ?? null;
-    hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel);
+    hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel, host);
   } else {
-    allMessages = await fetchMessagesByIds(round.message_ids);
-    answerHint = await buildAnswerHint(round.badges, round.color, round.channel);
+    allMessages = await fetchMessagesByIds(round.message_ids, host);
+    answerHint = await buildAnswerHint(round.badges, round.color, round.channel, host);
   }
 
   return {

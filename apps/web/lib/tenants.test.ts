@@ -21,4 +21,19 @@ describe('getTenantOverrides', () => {
       }
     }
   });
+
+  it('returns a databaseUrlEnv override when the tenant keeps its own database', () => {
+    const originalKeys = Object.keys(TENANTS);
+    TENANTS['streamer2.example.com'] = { channel: 'streamer2', databaseUrlEnv: 'STREAMER2_DATABASE_URL' };
+    try {
+      expect(getTenantOverrides('streamer2.example.com')).toEqual({
+        channel: 'streamer2',
+        databaseUrlEnv: 'STREAMER2_DATABASE_URL',
+      });
+    } finally {
+      for (const key of Object.keys(TENANTS)) {
+        if (!originalKeys.includes(key)) delete TENANTS[key];
+      }
+    }
+  });
 });

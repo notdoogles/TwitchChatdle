@@ -35,6 +35,12 @@ export interface TenantOverrides {
   // Optional extra gif always shown on a win, layered on top of the
   // random winnerImages pick (see components/GameBoard.tsx).
   winnerGif?: string;
+  // Optional env var *name* holding this tenant's own DATABASE_URL, so one
+  // deployment can serve tenants that keep their game data in separate
+  // Postgres databases (see lib/db.ts getPool). Unset means the tenant
+  // shares the deployment's DATABASE_URL. Deliberately a name, not a value:
+  // connection strings are secrets and belong in env vars, not source.
+  databaseUrlEnv?: string;
 }
 
 export const TENANTS: Record<string, TenantOverrides> = {

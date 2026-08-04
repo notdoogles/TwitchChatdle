@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { submitGuess } from '@/lib/game';
+import { resolveHost } from '@/lib/previewTenant';
 import { getRequestContext } from '@/lib/requestContext';
 import { logRequest } from '@/lib/requestLog';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/guess'));
+  const host = resolveHost(req.headers);
+  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/guess', host));
 
   let body: { roundId?: string; guess?: string; guessNumber?: number };
   try {
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await submitGuess(roundId, guess, guessNumber);
+    const result = await submitGuess(roundId, guess, guessNumber, host);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not grade that guess.';

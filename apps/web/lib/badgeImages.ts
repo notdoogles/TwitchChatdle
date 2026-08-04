@@ -1,4 +1,4 @@
-import { pool } from './db';
+import { getPool } from './db';
 import { getTwitchClientId, getTwitchClientSecret } from './config';
 
 // Twitch's legacy unauthenticated badges.twitch.tv endpoint (what this
@@ -139,12 +139,12 @@ function bestImageUrl(version: HelixBadgeVersion | undefined): string | null {
 // the `room-id` IRC tag -- see apps/ingest/index.js) so channel-specific
 // badge images can be resolved. Returns null if the channel hasn't sent a
 // message since the `channels` table was added yet.
-async function getTwitchChannelId(channel: string): Promise<string | null> {
+async function getTwitchChannelId(channel: string, host?: string | null): Promise<string | null> {
   if (channelIdCache.has(channel)) return channelIdCache.get(channel)!;
 
   let twitchChannelId: string | null = null;
   try {
-    const { rows } = await pool.query<{ twitch_channel_id: string }>(
+    const { rows } = await getPool(host).query<{ twitch_channel_id: string }>(
       'select twitch_channel_id from channels where channel = $1',
       [channel]
     );
@@ -171,8 +171,8 @@ export async function getGlobalBadgeSlugs(): Promise<Set<string> | null> {
   return globalSets ? new Set(Object.keys(globalSets)) : null;
 }
 
-export async function getChannelBadgeSlugs(channel: string): Promise<Set<string> | null> {
-  const twitchChannelId = await getTwitchChannelId(channel);
+export async function getChannelBadgeSlugs(channel: string, host?: string | null): Promise<Set<string> | null> {
+  const twitchChannelId = await getTwitchChannelId(channel, host);
   if (!twitchChannelId) return null;
   const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId));
   return channelSets ? new Set(Object.keys(channelSets)) : null;
@@ -192,12 +192,13 @@ export async function resolveBadgeImageUrl(
   kind: 'channel' | 'global',
   slug: string | null,
   version: string | null,
-  channel: string
+  channel: string,
+  host?: string | null
 ): Promise<string | null> {
   if (!slug || !version) return null;
 
   if (kind === 'channel') {
-    const twitchChannelId = await getTwitchChannelId(channel);
+    const twitchChannelId = await getTwitchChannelId(channel, host);
     if (twitchChannelId) {
       const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId));
       const fromChannel = bestImageUrl(channelSets?.[slug]?.[version]);
