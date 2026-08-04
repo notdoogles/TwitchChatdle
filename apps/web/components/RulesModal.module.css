@@ -1,19 +1,10 @@
-/* Wraps the info button + its hover tooltip so the tooltip can be
-   positioned relative to the button. */
-.wrap {
+/* The button is just the info icon glyph itself -- no border or chrome.
+   Positioned so the tooltip inside it can anchor below the icon. */
+.infoButton {
   position: relative;
   display: inline-flex;
-}
-
-.infoButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 50%;
-  border: 1px solid var(--border);
+  padding: 4px;
+  border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -22,7 +13,6 @@
 .infoButton:hover,
 .infoButton:focus-visible {
   color: var(--accent);
-  border-color: var(--accent);
 }
 
 /* Hover tooltip ("Rules") centered under the icon. */
@@ -44,8 +34,8 @@
   z-index: 30;
 }
 
-.infoButton:hover + .tooltip,
-.infoButton:focus-visible + .tooltip {
+.infoButton:hover .tooltip,
+.infoButton:focus-visible .tooltip {
   opacity: 1;
 }
 

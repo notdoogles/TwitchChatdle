@@ -41,25 +41,25 @@ export default function RulesModal() {
 
   return (
     <>
-      <div className={styles.wrap}>
-        <button
-          type="button"
-          className={styles.infoButton}
-          onClick={() => setOpen(true)}
-          aria-label="Show rules"
-          aria-describedby="rules-tooltip"
-          aria-haspopup="dialog"
-        >
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M8 7v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx="8" cy="4.5" r="1" fill="currentColor" />
-          </svg>
-        </button>
+      <button
+        type="button"
+        className={styles.infoButton}
+        onClick={() => setOpen(true)}
+        aria-label="Show rules"
+        aria-describedby="rules-tooltip"
+        aria-haspopup="dialog"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M8 7v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="8" cy="4.5" r="1" fill="currentColor" />
+        </svg>
+        {/* The hover tooltip lives inside the button so it can be positioned
+            relative to the icon without a wrapper element. */}
         <span id="rules-tooltip" className={styles.tooltip} role="tooltip">
           Rules
         </span>
-      </div>
+      </button>
 
       {open && (
         <div className={styles.overlay} onClick={() => setOpen(false)}>
