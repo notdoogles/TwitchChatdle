@@ -9,9 +9,9 @@ import { logRequest } from '@/lib/requestLog';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/new'));
-
   const host = resolveHost(req.headers);
+  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/new', host));
+
   const channel = getChannel(host);
   if (!channel) {
     return NextResponse.json({ error: 'TWITCH_CHANNEL is not configured on the server.' }, { status: 500 });

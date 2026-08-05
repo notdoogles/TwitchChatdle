@@ -15,9 +15,13 @@ vi.mock('./config', async (importOriginal) => {
   };
 });
 
-vi.mock('./db', () => ({
-  pool: { query: vi.fn(async () => ({ rows: [{ twitch_channel_id: '123' }] })) },
-}));
+vi.mock('./db', () => {
+  const pool = { query: vi.fn(async () => ({ rows: [{ twitch_channel_id: '123' }] })) };
+  return {
+    pool,
+    getPool: vi.fn(() => pool),
+  };
+});
 
 import { classifyAllBadges } from './badges';
 

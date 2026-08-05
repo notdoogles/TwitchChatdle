@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { skipMessage } from '@/lib/game';
+import { resolveHost } from '@/lib/previewTenant';
 import { getRequestContext } from '@/lib/requestContext';
 import { logRequest } from '@/lib/requestLog';
 
@@ -10,7 +11,8 @@ export const dynamic = 'force-dynamic';
 // revealing the same easy-mode hint a wrong guess would (see skipMessage in
 // lib/game.ts).
 export async function POST(req: Request) {
-  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/skip'));
+  const host = resolveHost(req.headers);
+  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/skip', host));
 
   let body: { roundId?: string; guessNumber?: number };
   try {
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await skipMessage(roundId, guessNumber);
+    const result = await skipMessage(roundId, guessNumber, host);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not skip that message.';

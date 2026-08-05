@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./db', () => ({
-  pool: { query: vi.fn() },
-}));
+vi.mock('./db', () => {
+  const mockPool = { query: vi.fn() };
+  return {
+    pool: mockPool,
+    getPool: vi.fn(() => mockPool),
+  };
+});
 
 import { pool } from './db';
 import { createRound, rerollRound, skipMessage, submitGuess } from './game';

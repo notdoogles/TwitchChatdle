@@ -70,7 +70,8 @@ export interface ClassifiedBadges {
 // fallback for when no image is available.
 export async function classifyAllBadges(
   badges: Record<string, string> | null | undefined,
-  channel: string
+  channel: string,
+  host?: string | null
 ): Promise<ClassifiedBadges> {
   const slugs = badges ? Object.keys(badges) : [];
   if (slugs.length === 0) return { channelBadges: [], globalBadges: [] };
@@ -92,7 +93,7 @@ export async function classifyAllBadges(
   // slugs are simply ignored, same as before this lookup existed.
   if (unclassified.length > 0) {
     const [liveChannelSlugs, liveGlobalSlugs] = await Promise.all([
-      getChannelBadgeSlugs(channel),
+      getChannelBadgeSlugs(channel, host),
       getGlobalBadgeSlugs(),
     ]);
     for (const slug of unclassified) {
