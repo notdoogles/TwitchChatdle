@@ -66,6 +66,12 @@ the shared `public/static/winners|losers/` directories -- those folders are
 only used as a fallback when a tenant has no images of its own (or for the
 single-tenant/default case, where there's no tenant at all).
 
+A tenant can also keep its game data in its own Postgres database instead
+of sharing the deployment's `DATABASE_URL`: add a `databaseUrlEnv` field
+(e.g. `databaseUrlEnv: 'STREAMER1_DATABASE_URL'`) naming an env var that
+holds that tenant's connection string (see `lib/db.ts` `getPool`). Unset
+means the tenant shares the shared database.
+
 This is purely additive: if `lib/tenants.ts` has no entries (the default),
 behavior is identical to the single-tenant setup above.
 

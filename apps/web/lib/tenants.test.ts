@@ -36,4 +36,16 @@ describe('getTenantOverrides', () => {
       }
     }
   });
+
+  it('resolves the committed elliebdle tenant entry', () => {
+    expect(getTenantOverrides('elliebdle.doogl.es')).toEqual({
+      channel: 'elliebwalker',
+      gameName: 'Elliebdle',
+      imagesSlug: 'elliebdle',
+      winnerGif: '/static/tenants/elliebdle/imaw.gif',
+      adSidebarImage: '/static/tenants/elliebdle/sexoura.jpg',
+      adSidebarText: 'Elliebdle is brought to you by Sexoura Ring',
+      databaseUrlEnv: 'ELLIEBDLE_DATABASE_URL',
+    });
+  });
 });

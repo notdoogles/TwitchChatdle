@@ -44,6 +44,17 @@ export interface TenantOverrides {
 }
 
 export const TENANTS: Record<string, TenantOverrides> = {
+  'elliebdle.doogl.es': {
+    channel: 'elliebwalker',
+    gameName: 'Elliebdle',
+    imagesSlug: 'elliebdle',
+    winnerGif: '/static/tenants/elliebdle/imaw.gif',
+    adSidebarImage: '/static/tenants/elliebdle/sexoura.jpg',
+    adSidebarText: 'Elliebdle is brought to you by Sexoura Ring',
+    // elliebdle keeps its game data in its own database; the deployment
+    // must define ELLIEBDLE_DATABASE_URL (see lib/db.ts getPool).
+    databaseUrlEnv: 'ELLIEBDLE_DATABASE_URL',
+  },
   'whisqeydle.doogl.es': {
     channel: 'whisqey',
     gameName: 'Whisqeydle',
