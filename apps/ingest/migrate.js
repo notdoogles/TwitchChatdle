@@ -100,6 +100,13 @@ create index if not exists idx_game_rounds_channel on game_rounds(channel);
 -- previous variant, while still being reproducible if computed twice.
 alter table game_rounds add column if not exists variant integer not null default 0;
 
+-- Autocomplete hint list for this round, captured at creation time so
+-- apps/web's createRound() can serve an already-created round without
+-- re-running the expensive candidate-message query on every page view.
+-- NULL for rounds created before this column existed; those are backfilled
+-- once, lazily, on first read (see lib/game.ts buildFromStoredRound).
+alter table game_rounds add column if not exists username_hints text[];
+
 -- Enforces "one answer per channel per day" -- apps/web's createRound()
 -- does an upsert-style insert against this so concurrent first-visitors of
 -- the day can't create two different daily answers.

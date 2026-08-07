@@ -32,6 +32,7 @@ interface GameRoundRow {
   id: string;
   message_ids: number[];
   max_guesses: number;
+  username_hints?: string[] | null;
 }
 
 // A message long/varied enough to pass lib/textFilters.isIntelligible.
@@ -80,8 +81,11 @@ function setupCreateRoundMocks(
       }
       return { rows: [{ id, message_ids: messageIds, max_guesses: maxGuesses }] };
     }
-    if (sql.includes('select id, message_ids, max_guesses from game_rounds where channel')) {
+    if (sql.includes('select id, message_ids, max_guesses, username_hints from game_rounds where channel')) {
       return { rows: raceFallbackRows };
+    }
+    if (sql.trim().startsWith('update game_rounds set username_hints')) {
+      return { rows: [] };
     }
     if (sql.includes('from messages m') && sql.includes('join users u')) {
       const id = params[0] as number;
@@ -152,31 +156,62 @@ describe('createRound', () => {
   it('returns the existing round instead of creating a new one on a second call the same day', async () => {
     const rows = candidatesForUser(1, 'alice', 5);
     setupCreateRoundMocks(rows, {
-      existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5 }],
+      existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5, username_hints: ['alice'] }],
     });
     const round = await createRound('somechannel');
     expect(round.roundId).toBe('existing-round-id');
     expect(round.message).toBe('this is unique chat message number 0 from alice');
   });
 
-  it('keeps the answer in usernameHints for an existing round even if they later drop out of the live eligible pool', async () => {
-    // alice was eligible (5 messages) when the round was created, but a
-    // duplicate posted since then makes the candidate query re-run with
-    // only 4 of her messages still unique -- simulating pool drift after
-    // the round already locked in her message_ids as the answer.
+  it('serves an existing round from its stored hints without re-running the candidate query', async () => {
+    const rows = candidatesForUser(1, 'alice', 5);
+    setupCreateRoundMocks(rows, {
+      existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5, username_hints: ['alice'] }],
+    });
+    const round = await createRound('somechannel');
+    expect(round.usernameHints).toEqual(['alice']);
+    // The heavy candidate query must not run when stored hints exist.
+    const candidateCall = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('with normalized as')
+    );
+    expect(candidateCall).toBeUndefined();
+  });
+
+  it('lazily backfills username_hints for a round created before the column existed', async () => {
+    const rows = candidatesForUser(1, 'alice', 5);
+    // No username_hints on the stored row: the legacy round pre-dates the
+    // column, so createRound pays the candidate query exactly once to
+    // backfill, then serves the round from stored hints thereafter.
+    setupCreateRoundMocks(rows, {
+      existingRoundRows: [{ id: 'legacy-round-id', message_ids: [100], max_guesses: 5 }],
+    });
+    const round = await createRound('somechannel');
+    expect(round.roundId).toBe('legacy-round-id');
+    expect(round.usernameHints).toEqual(['alice']);
+    const updateCall = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('update game_rounds set username_hints')
+    );
+    expect(updateCall).toBeTruthy();
+    expect((updateCall?.[1] as unknown[])?.[0]).toEqual(['alice']);
+  });
+
+  it('returns the stored hint list as-is for an existing round, so live pool drift can never drop the answer', async () => {
+    // alice has only 4 eligible messages now (a duplicate posted since the
+    // round locked in her message_ids as the answer) -- irrelevant, because
+    // the hints come from the stored list, not a fresh candidate query.
     const rows = [...candidatesForUser(1, 'alice', 4), ...candidatesForUser(2, 'bob', 5)];
     setupCreateRoundMocks(rows, {
-      existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5 }],
+      existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5, username_hints: ['alice', 'bob'] }],
     });
     const round = await createRound('somechannel');
     expect(round.message).toBe('this is unique chat message number 0 from alice');
-    expect(round.usernameHints).toContain('alice');
+    expect(round.usernameHints).toEqual(['alice', 'bob']);
   });
 
   it('falls back to the winning row when the insert loses an insert race', async () => {
     const rows = candidatesForUser(1, 'alice', 5);
     setupCreateRoundMocks(rows, {
-      raceFallbackRows: [{ id: 'winner-round-id', message_ids: [100], max_guesses: 5 }],
+      raceFallbackRows: [{ id: 'winner-round-id', message_ids: [100], max_guesses: 5, username_hints: ['alice'] }],
     });
     const round = await createRound('somechannel');
     expect(round.roundId).toBe('winner-round-id');
@@ -280,6 +315,8 @@ describe('rerollRound', () => {
       ([sql]) => typeof sql === 'string' && sql.includes('on conflict (channel, game_date) do update')
     );
     expect((insertCall?.[1] as unknown[])?.[6]).toBe(3);
+    // The reroll also rewrites the hint list alongside the new pick.
+    expect((insertCall?.[1] as unknown[])?.[7]).toEqual(['alice', 'bob']);
   });
 
   it('throws when no chatter has enough eligible messages', async () => {

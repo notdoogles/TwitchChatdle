@@ -128,9 +128,14 @@ client.on('message', async (channel, tags, message, self) => {
   try {
     const normalizedChannel = channel.replace('#', '');
     const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username);
-    await upsertChannelState(userId, normalizedChannel, tags.color, tags.badges);
-    await insertMessage(userId, normalizedChannel, message);
-    await upsertChannelId(normalizedChannel, tags['room-id']);
+    // Only the user upsert must finish first (the message insert needs its
+    // id); the remaining three writes are independent of each other, so run
+    // them concurrently to cut per-message DB round trips from four to two.
+    await Promise.all([
+      upsertChannelState(userId, normalizedChannel, tags.color, tags.badges),
+      insertMessage(userId, normalizedChannel, message),
+      upsertChannelId(normalizedChannel, tags['room-id']),
+    ]);
   } catch (err) {
     console.error('Failed to log message:', err.message);
   }
