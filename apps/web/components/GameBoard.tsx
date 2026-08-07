@@ -10,11 +10,12 @@ import {
   getMsUntilNextGameDate,
   slugify,
 } from '@/lib/config';
-import { filterUsernameSuggestions } from '@/lib/usernameSuggestions';
-import { DEFAULT_MASK_LENGTH, NONE_LABEL, RoundHint, maskForHint } from '@/lib/hints';
 import { SKIPPED_GUESS_LABEL, buildShareText } from '@/lib/shareText';
-
-type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
+import type { RoundHint } from '@/lib/hints';
+import { applyRoundResult, InitialRound, pickResultImage, RoundState, Status } from './roundState';
+import ChatLog from './ChatLog';
+import GuessForm from './GuessForm';
+import ResultsModal from './ResultsModal';
 
 interface GameBoardProps {
   gameName?: string;
@@ -29,6 +30,14 @@ interface GameBoardProps {
   // Optional extra gif always shown on a win, layered on top of the
   // randomly-picked winnerImages (see getWinnerGif() in lib/config.ts).
   winnerGif?: string;
+  // Today's round, resolved server-side (app/page.tsx) so the first paint
+  // shows the first message instead of a client round trip + loading state.
+  // Null when the server couldn't build one (see initialError).
+  initialRound?: InitialRound | null;
+  // Server-side failure message (no channel configured, not enough messages
+  // yet, DB down). Seeded once into the error state; "Try again" re-runs the
+  // client fetch so it can recover without a full page reload.
+  initialError?: string | null;
 }
 
 interface StoredState {
@@ -52,24 +61,6 @@ interface StoredState {
 // Key (scoped under storagePrefix, not per-day) for the easy/hard mode
 // preference.
 const MODE_STORAGE_KEY = 'mode';
-
-// Picks (once) a random image from the given pool, so it stays the same
-// for the rest of the day instead of changing on every re-render. Returns
-// null if the pool is empty (e.g. no images were dropped into
-// public/static/winners or public/static/losers).
-function pickResultImage(pool: string[]): string | null {
-  if (pool.length === 0) return null;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-// Result media may be a still image or a video (.mp4/.webm) -- dropped into
-// public/static/winners or public/static/losers alongside images (see the
-// matching ALLOWED_EXTENSIONS in lib/resultImages.ts). Used to decide
-// whether to render a <video> instead of an <img> below.
-const VIDEO_EXTENSIONS = ['.mp4', '.webm'];
-function isVideoSrc(src: string): boolean {
-  return VIDEO_EXTENSIONS.some((ext) => src.toLowerCase().endsWith(ext));
-}
 
 // Skipped messages are recorded in the same guesses list (so they consume a
 // guess and show up in the round history), but are rendered distinctly from
@@ -154,17 +145,6 @@ async function copyToClipboard(text: string): Promise<void> {
   if (!ok) throw new Error('Copy failed.');
 }
 
-// Renders a real Twitch badge image when one was resolved server-side
-// (see lib/badgeImages.ts); falls back to the plain text label (e.g. when
-// badges.twitch.tv is unreachable, or the badge has no channel/global
-// image at all) so the hint is never silently missing.
-function BadgePill({ label, iconUrl }: { label: string; iconUrl?: string | null }) {
-  if (iconUrl) {
-    return <img src={iconUrl} alt={label} title={label} className={styles.badgeIcon} />;
-  }
-  return <span className={styles.badgePill}>{label}</span>;
-}
-
 export default function GameBoard({
   gameName = DEFAULT_GAME_NAME,
   winnerMessage = DEFAULT_WINNER_MESSAGE,
@@ -174,6 +154,8 @@ export default function GameBoard({
   resetHour,
   resetTimezone,
   winnerGif,
+  initialRound,
+  initialError,
 }: GameBoardProps) {
   const storagePrefix = `${slugify(gameName)}:`;
   const [status, setStatus] = useState<Status>('loading');
@@ -183,9 +165,6 @@ export default function GameBoard({
   const [guesses, setGuesses] = useState<string[]>([]);
   const [maxGuesses, setMaxGuesses] = useState(0);
   const [usernameHints, setUsernameHints] = useState<string[]>([]);
-  const [guessValue, setGuessValue] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [correctUsername, setCorrectUsername] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [allMessages, setAllMessages] = useState<string[] | null>(null);
@@ -199,9 +178,13 @@ export default function GameBoard({
   // Feedback for the Share button: 'copied'/'error' are shown on the button
   // label itself and reset back to 'idle' after a couple of seconds.
   const [shareState, setShareState] = useState<'idle' | 'copied' | 'error'>('idle');
+  // True while a guess/skip request is in flight: guards against a rapid
+  // double-Enter submitting the same guess twice with a stale guessNumber.
+  const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const chatLogRef = useRef<HTMLDivElement>(null);
-  const modalCloseRef = useRef<HTMLButtonElement>(null);
+  // The SSR error is seeded once; "Try again" must fall through to the real
+  // client fetch instead of re-showing the same server error forever.
+  const initialErrorUsed = useRef(false);
 
   // Easy/hard mode is a persistent player preference, independent of any
   // single day's round (unlike the rest of localStorage state below, which
@@ -229,7 +212,8 @@ export default function GameBoard({
   // Loads (or resumes) today's round. Runs once per calendar day: the
   // server always returns the same answer for the day, and any saved
   // progress/result for that day is restored from localStorage instead of
-  // starting over.
+  // starting over. When the server component already resolved the round
+  // (initialRound), that's used directly and no client fetch happens.
   const loadToday = useCallback(async () => {
     setStatus('loading');
     setErrorMsg(null);
@@ -238,9 +222,22 @@ export default function GameBoard({
       const today = getGameDate(new Date(), window.location.hostname, { resetHour, resetTimezone });
       cleanupOldEntries(storagePrefix, today);
 
-      const res = await fetch('/api/game/new', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not load today's round.");
+      let data: { roundId: string; maxGuesses: number; message: string; usernameHints?: string[] };
+      if (initialRound && initialRound.gameDate === today) {
+        // Matches what /api/game/new returns, minus guessesRemaining which
+        // this code path doesn't use.
+        data = initialRound;
+      } else if (initialError && !initialErrorUsed.current) {
+        initialErrorUsed.current = true;
+        setErrorMsg(initialError);
+        setStatus('error');
+        return;
+      } else {
+        const res = await fetch('/api/game/new', { method: 'POST' });
+        const fetched = await res.json();
+        if (!res.ok) throw new Error(fetched.error ?? "Could not load today's round.");
+        data = fetched;
+      }
 
       setGameDate(today);
       setRoundId(data.roundId);
@@ -261,7 +258,6 @@ export default function GameBoard({
         setAllMessages(stored.allMessages ?? null);
         setModalOpen(stored.status === 'won' || stored.status === 'lost');
         setShowAllMessages(false);
-        setGuessValue('');
         setStatus(stored.status);
         if (stored.status === 'playing') {
           requestAnimationFrame(() => inputRef.current?.focus());
@@ -323,7 +319,6 @@ export default function GameBoard({
         setAllMessages(null);
         setModalOpen(false);
         setShowAllMessages(false);
-        setGuessValue('');
         setStatus('playing');
         requestAnimationFrame(() => inputRef.current?.focus());
       }
@@ -331,118 +326,74 @@ export default function GameBoard({
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
       setStatus('error');
     }
-  }, [storagePrefix, winnerImages, loserImages, resetHour, resetTimezone]);
+  }, [storagePrefix, winnerImages, loserImages, resetHour, resetTimezone, initialRound, initialError]);
 
   useEffect(() => {
     loadToday();
   }, [loadToday]);
 
   // Countdown to the next midnight EST, shown once today's game is over.
+  // Background tabs throttle setInterval, so the shown value can go stale;
+  // recompute the moment the tab becomes visible again.
   useEffect(() => {
     if (status !== 'won' && status !== 'lost') return;
     const tick = () => setCountdown(formatCountdown(getMsUntilNextGameDate(new Date(), window.location.hostname, { resetHour, resetTimezone })));
     tick();
     const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [status, resetHour, resetTimezone]);
 
-  // Keep the newest revealed message in view when the chat log scrolls
-  // internally (long messages can overflow its capped height). When the
-  // player reveals all messages at the end, jump to the top so they read
-  // from #1.
-  useEffect(() => {
-    const el = chatLogRef.current;
-    if (!el) return;
-    el.scrollTop = showAllMessages ? 0 : el.scrollHeight;
-  }, [lines, showAllMessages, allMessages]);
+  // Applies a guess/skip response to local state and persists it. Shared by
+  // handleSubmit and handleSkip so the two flows can't drift apart.
+  function commitRoundResult(next: RoundState, openModal: boolean) {
+    setGuesses(next.guesses);
+    setLines(next.lines);
+    setStatus(next.status);
+    setHints(next.hints);
+    setAnswerHint(next.answerHint);
+    setCorrectUsername(next.correctUsername);
+    setResultImage(next.resultImage);
+    setAllMessages(next.allMessages);
+    setModalOpen(openModal);
+    setShowAllMessages(false);
+  }
 
-  // While the results modal is open: lock body scroll, close on Escape, and
-  // move focus to its close button for keyboard/screen-reader users.
-  useEffect(() => {
-    if (!modalOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setModalOpen(false);
-    };
-    document.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    modalCloseRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [modalOpen]);
+  async function handleSubmit(guess: string): Promise<boolean> {
+    if (!roundId || !gameDate || status !== 'playing' || submitting) return false;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!roundId || !gameDate || !guessValue.trim() || status !== 'playing') return;
-
-    const guessNumber = guesses.length;
+    setSubmitting(true);
+    setErrorMsg(null);
     try {
       const res = await fetch('/api/game/guess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roundId, guess: guessValue, guessNumber }),
+        body: JSON.stringify({ roundId, guess, guessNumber: guesses.length }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not grade that guess.');
 
-      const newGuesses = [...guesses, guessValue.trim()];
-      let newLines = lines;
-      let newStatus: Status = 'playing';
-      let newCorrectUsername = correctUsername;
-      let newResultImage = resultImage;
-      let newAllMessages = allMessages;
-      let newHints = hints;
-      let newAnswerHint = answerHint;
-
-      if (data.correct) {
-        newStatus = 'won';
-        newCorrectUsername = data.correctUsername ?? null;
-        newResultImage = pickResultImage(winnerImages);
-        newAllMessages = data.allMessages ?? null;
-        newAnswerHint = data.answerHint ?? {};
-      } else {
-        if (data.nextMessage) newLines = [...lines, data.nextMessage];
-        if (data.hint) newHints = { ...hints, ...data.hint };
-        if (data.gameOver) {
-          newStatus = 'lost';
-          newCorrectUsername = data.correctUsername ?? null;
-          newResultImage = pickResultImage(loserImages);
-          newAllMessages = data.allMessages ?? null;
-          newAnswerHint = data.answerHint ?? {};
-        }
-      }
-
-      setGuesses(newGuesses);
-      setLines(newLines);
-      setStatus(newStatus);
-      setHints(newHints);
-      setAnswerHint(newAnswerHint);
-      setCorrectUsername(newCorrectUsername);
-      setResultImage(newResultImage);
-      setAllMessages(newAllMessages);
-      setModalOpen(newStatus === 'won' || newStatus === 'lost');
-      setShowAllMessages(false);
-      setGuessValue('');
-      setShowSuggestions(false);
-      setActiveSuggestion(-1);
-
-      persist(storagePrefix, {
-        gameDate,
-        roundId,
-        maxGuesses,
-        lines: newLines,
-        guesses: newGuesses,
-        status: newStatus,
-        correctUsername: newCorrectUsername,
-        resultImage: newResultImage,
-        allMessages: newAllMessages,
-        hints: newHints,
-        answerHint: newAnswerHint,
-      });
+      const { state: next, openModal } = applyRoundResult(
+        { guesses, lines, status, correctUsername, resultImage, allMessages, hints, answerHint },
+        data,
+        guess.trim(),
+        winnerImages,
+        loserImages
+      );
+      commitRoundResult(next, openModal);
+      persist(storagePrefix, { gameDate, roundId, maxGuesses, ...next });
+      return true;
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
+      return false;
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -451,66 +402,32 @@ export default function GameBoard({
   // lib/game.ts). Skipping the last message ends the round as a loss, same as
   // running out of guesses.
   async function handleSkip() {
-    if (!roundId || !gameDate || status !== 'playing') return;
+    if (!roundId || !gameDate || status !== 'playing' || submitting) return;
 
-    const guessNumber = guesses.length;
+    setSubmitting(true);
+    setErrorMsg(null);
     try {
       const res = await fetch('/api/game/skip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roundId, guessNumber }),
+        body: JSON.stringify({ roundId, guessNumber: guesses.length }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not skip that message.');
 
-      const newGuesses = [...guesses, SKIPPED_GUESS_LABEL];
-      let newLines = lines;
-      let newStatus: Status = 'playing';
-      let newCorrectUsername = correctUsername;
-      let newResultImage = resultImage;
-      let newAllMessages = allMessages;
-      let newHints = hints;
-      let newAnswerHint = answerHint;
-
-      if (data.nextMessage) newLines = [...lines, data.nextMessage];
-      if (data.hint) newHints = { ...hints, ...data.hint };
-      if (data.gameOver) {
-        newStatus = 'lost';
-        newCorrectUsername = data.correctUsername ?? null;
-        newResultImage = pickResultImage(loserImages);
-        newAllMessages = data.allMessages ?? null;
-        newAnswerHint = data.answerHint ?? {};
-      }
-
-      setGuesses(newGuesses);
-      setLines(newLines);
-      setStatus(newStatus);
-      setHints(newHints);
-      setAnswerHint(newAnswerHint);
-      setCorrectUsername(newCorrectUsername);
-      setResultImage(newResultImage);
-      setAllMessages(newAllMessages);
-      setModalOpen(newStatus === 'lost');
-      setShowAllMessages(false);
-      setGuessValue('');
-      setShowSuggestions(false);
-      setActiveSuggestion(-1);
-
-      persist(storagePrefix, {
-        gameDate,
-        roundId,
-        maxGuesses,
-        lines: newLines,
-        guesses: newGuesses,
-        status: newStatus,
-        correctUsername: newCorrectUsername,
-        resultImage: newResultImage,
-        allMessages: newAllMessages,
-        hints: newHints,
-        answerHint: newAnswerHint,
-      });
+      const { state: next, openModal } = applyRoundResult(
+        { guesses, lines, status, correctUsername, resultImage, allMessages, hints, answerHint },
+        data,
+        SKIPPED_GUESS_LABEL,
+        winnerImages,
+        loserImages
+      );
+      commitRoundResult(next, openModal);
+      persist(storagePrefix, { gameDate, roundId, maxGuesses, ...next });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -541,40 +458,11 @@ export default function GameBoard({
   // switching mid-round can't retroactively hide/reveal hints already
   // shown; it unlocks again on the next day's fresh round.
   const modeLocked = guesses.length > 0 || isOver;
-  const usernameMask = easyMode ? maskForHint(hints) : '?'.repeat(DEFAULT_MASK_LENGTH);
-
-  const suggestions = filterUsernameSuggestions(usernameHints, guessValue);
-  const suggestionsOpen = showSuggestions && suggestions.length > 0;
-
-  function selectSuggestion(name: string) {
-    setGuessValue(name);
-    setShowSuggestions(false);
-    setActiveSuggestion(-1);
-    inputRef.current?.focus();
-  }
-
-  function handleGuessKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!suggestionsOpen) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveSuggestion((prev) => (prev + 1) % suggestions.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveSuggestion((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
-    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
-      // Only intercept Enter when a suggestion is highlighted, otherwise
-      // let the form submit the typed guess as-is.
-      e.preventDefault();
-      selectSuggestion(suggestions[activeSuggestion]);
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-      setActiveSuggestion(-1);
-    }
-  }
 
   const displayedLines = isOver && showAllMessages && allMessages ? allMessages : lines;
   const shareLabel = shareState === 'copied' ? 'Copied!' : shareState === 'error' ? 'Copy failed' : 'Share';
   const shareClass = shareState === 'copied' ? `${styles.sendButton} ${styles.shareCopied}` : styles.sendButton;
+  const closeModal = useCallback(() => setModalOpen(false), []);
 
   return (
     <>
@@ -603,75 +491,17 @@ export default function GameBoard({
         </div>
       </div>
 
-      <div
-        className={`${styles.chatLog}${isOver ? '' : ` ${styles.chatLogScroll}`}`}
-        ref={chatLogRef}
-      >
-        {displayedLines.map((text, i) => (
-          <div key={i} className={styles.chatLine}>
-            <span className={styles.username}>
-              {/* Twitch renders a chatter's badges right-to-left (the
-                  highest-priority badge sits closest to the username), so
-                  each category's list -- and channel-before-global overall
-                  -- is reversed here to match. */}
-              {isOver && showAllMessages ? (
-                <>
-                  {(answerHint.channelBadges ?? [])
-                    .slice()
-                    .reverse()
-                    .map((badge, badgeIndex) => (
-                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                    ))}
-                  {(answerHint.globalBadges ?? [])
-                    .slice()
-                    .reverse()
-                    .map((badge, badgeIndex) => (
-                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                    ))}
-                  <span style={answerHint.color ? { color: answerHint.color } : undefined}>
-                    {correctUsername}
-                  </span>
-                </>
-              ) : (
-                <>
-                  {easyMode && hints.channelBadges !== undefined && hints.channelBadges.length === 0 && (
-                    <BadgePill label={NONE_LABEL} />
-                  )}
-                  {easyMode &&
-                    (hints.channelBadges ?? [])
-                      .slice()
-                      .reverse()
-                      .map((badge, badgeIndex) => (
-                        <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                      ))}
-                  {easyMode && hints.globalBadges !== undefined && hints.globalBadges.length === 0 && (
-                    <BadgePill label={NONE_LABEL} />
-                  )}
-                  {easyMode &&
-                    (hints.globalBadges ?? [])
-                      .slice()
-                      .reverse()
-                      .map((badge, badgeIndex) => (
-                        <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
-                      ))}
-                  {easyMode && hints.usernameLength !== undefined && (
-                    <span className={styles.usernameLength}>({hints.usernameLength}) </span>
-                  )}
-                  <span
-                    className={styles.usernameMask}
-                    style={easyMode && hints.color ? { color: hints.color } : undefined}
-                  >
-                    {usernameMask}
-                  </span>
-                </>
-              )}
-            </span>
-            <span className={styles.message}>{text}</span>
-          </div>
-        ))}
-
-        {status === 'error' && errorMsg && <div className={`${styles.systemLine} ${styles.lose}`}>{errorMsg}</div>}
-      </div>
+      <ChatLog
+        lines={displayedLines}
+        isOver={isOver}
+        showAllMessages={showAllMessages}
+        easyMode={easyMode}
+        hints={hints}
+        answerHint={answerHint}
+        correctUsername={correctUsername}
+        status={status}
+        errorMsg={errorMsg}
+      />
 
       {!isOver && (
         <div className={styles.pips} aria-label={`${guessesRemaining} of ${maxGuesses} guesses left`}>
@@ -682,68 +512,13 @@ export default function GameBoard({
       )}
 
       {status === 'playing' && (
-        <form className={styles.inputRow} onSubmit={handleSubmit}>
-          <div className={styles.inputWrap}>
-            <input
-              ref={inputRef}
-              className={styles.input}
-              value={guessValue}
-              onChange={(e) => {
-                setGuessValue(e.target.value);
-                setShowSuggestions(true);
-                setActiveSuggestion(-1);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setShowSuggestions(false)}
-              onKeyDown={handleGuessKeyDown}
-              placeholder="Guess a username..."
-              autoComplete="off"
-              // autoComplete="off" alone doesn't stop password managers from
-              // offering to fill a text input, so opt out explicitly per vendor.
-              data-1p-ignore="true"
-              data-lpignore="true"
-              data-bwignore="true"
-              data-dashlaneignore="true"
-              data-roboformignore="true"
-              data-form-type="other"
-              role="combobox"
-              aria-expanded={suggestionsOpen}
-              aria-controls="username-suggestions"
-              aria-autocomplete="list"
-              aria-activedescendant={
-                activeSuggestion >= 0 ? `username-suggestion-${activeSuggestion}` : undefined
-              }
-              aria-label="Guess a username"
-            />
-            {suggestionsOpen && (
-              <ul className={styles.suggestions} id="username-suggestions" role="listbox">
-                {suggestions.map((name, i) => (
-                  <li
-                    key={name}
-                    id={`username-suggestion-${i}`}
-                    role="option"
-                    aria-selected={i === activeSuggestion}
-                    className={i === activeSuggestion ? styles.suggestionActive : styles.suggestion}
-                    // onMouseDown (not onClick) fires before the input's blur,
-                    // and preventDefault keeps focus on the input.
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      selectSuggestion(name);
-                    }}
-                  >
-                    {name}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <button type="button" className={styles.skipButton} onClick={handleSkip}>
-            Skip
-          </button>
-          <button type="submit" className={styles.sendButton}>
-            Guess
-          </button>
-        </form>
+        <GuessForm
+          usernameHints={usernameHints}
+          submitting={submitting}
+          inputRef={inputRef}
+          onSubmitGuess={handleSubmit}
+          onSkip={handleSkip}
+        />
       )}
 
       {/* Wrong guesses so far, shown live as the player makes them so they
@@ -805,66 +580,25 @@ export default function GameBoard({
       )}
     </div>
 
-    {isOver && modalOpen && (
-      <div className={styles.modalOverlay} onClick={() => setModalOpen(false)}>
-        <div
-          className={styles.modalCard}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="result-heading"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            ref={modalCloseRef}
-            type="button"
-            className={styles.modalClose}
-            onClick={() => setModalOpen(false)}
-            aria-label="Close results"
-          >
-            ×
-          </button>
-
-          <div className={`${styles.resultBanner} ${status === 'won' ? styles.win : styles.lose}`}>
-            <h2 id="result-heading" className={styles.resultHeading}>
-              {status === 'won' ? winnerMessage : loserMessage}
-            </h2>
-            {status === 'won' && winnerGif && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img className={styles.resultGif} src={winnerGif} alt="" />
-            )}
-            {resultImage && isVideoSrc(resultImage) && (
-              <video className={styles.resultImage} src={resultImage} autoPlay muted loop playsInline />
-            )}
-            {resultImage && !isVideoSrc(resultImage) && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                className={styles.resultImage}
-                src={resultImage}
-                alt={status === 'won' ? 'Winner' : 'Loser'}
-              />
-            )}
-          </div>
-
-          <div className={styles.modalActions}>
-            <button type="button" className={shareClass} onClick={handleShare} aria-live="polite">
-              {shareLabel}
-            </button>
-            <button
-              type="button"
-              className={styles.sendButton}
-              onClick={() => {
-                setShowAllMessages(true);
-                setModalOpen(false);
-              }}
-            >
-              View all messages
-            </button>
-          </div>
-        </div>
-      </div>
+    {(status === 'won' || status === 'lost') && (
+      <ResultsModal
+        open={modalOpen}
+        status={status}
+        winnerMessage={winnerMessage}
+        loserMessage={loserMessage}
+        winnerGif={winnerGif}
+        resultImage={resultImage}
+        shareLabel={shareLabel}
+        shareClass={shareClass}
+        onShare={handleShare}
+        onClose={closeModal}
+        onViewAll={() => {
+          setShowAllMessages(true);
+          setModalOpen(false);
+        }}
+      />
     )}
 
     </>
   );
 }
-

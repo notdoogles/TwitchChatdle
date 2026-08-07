@@ -439,12 +439,17 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 12px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   text-align: center;
+  /* The result image/video is user-supplied and loads after the modal opens;
+     reserving a minimum height keeps the modal actions below from jumping
+     when it arrives (and gives a bare no-media banner a stable shape). */
+  min-height: 120px;
 }
 
 .resultHeading {
