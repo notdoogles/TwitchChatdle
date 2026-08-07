@@ -196,6 +196,21 @@ async function fetchCandidateMessages(channel: string, host?: string | null): Pr
 
 export async function createRound(channel: string, host?: string | null): Promise<NewRound> {
   const gameDate = getGameDate(new Date(), host);
+
+  // Cheap path first: today's round already exists (the common case -- it's
+  // created once per channel per day, then served to every visitor), so the
+  // candidate-message query below only runs when there's no round yet, or to
+  // lazily backfill a pre-username_hints row.
+  const existing = await getPool(host).query<StoredRoundRow>(
+    `select gr.id, gr.message_ids, gr.max_guesses, gr.username_hints
+     from game_rounds gr
+     where gr.channel = $1 and gr.game_date = $2`,
+    [channel, gameDate]
+  );
+  if (existing.rows.length > 0) {
+    return buildFromStoredRound(channel, gameDate, existing.rows[0], host);
+  }
+
   const candidates = await fetchCandidateMessages(channel, host);
   const eligible = computeEligibleChatters(candidates, host);
   // Hints are built from the same eligible (min-messages + top-chatters-limit
@@ -204,39 +219,33 @@ export async function createRound(channel: string, host?: string | null): Promis
   // and never omits one who could.
   const allUsernames = eligible.map(([, msgs]) => msgs[0].username).sort();
 
-  const existing = await getPool(host).query(
-    `select gr.id, gr.message_ids, gr.max_guesses
-     from game_rounds gr
-     where gr.channel = $1 and gr.game_date = $2`,
-    [channel, gameDate]
-  );
-  if (existing.rows.length > 0) {
-    const row = existing.rows[0];
-    return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
-  }
-
   const { userId, chosen } = pickRoundCandidate(eligible, roundSeed(channel, gameDate, 0));
+  // All of a round's messages come from one chatter, so the first picked
+  // message's username is the answer; captured here (rather than from a
+  // follow-up query) so the hint list can be written at insert time.
+  const correctUsername = chosen[0]?.username;
+  const usernameHints = capUsernameHints(allUsernames, correctUsername, getUsernameHintsLimit(host));
 
   const roundId = crypto.randomUUID();
   const inserted = await getPool(host).query(
-    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant)
-     values ($1, $2, $3, $4, $5, $6, 0)
+    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant, username_hints)
+     values ($1, $2, $3, $4, $5, $6, 0, $7)
      on conflict (channel, game_date) do nothing
      returning id, message_ids, max_guesses`,
-    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate]
+    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate, usernameHints]
   );
 
   if (inserted.rows.length === 0) {
     // Another request won the race and already created today's round.
-    const { rows } = await getPool(host).query(
-      `select id, message_ids, max_guesses from game_rounds where channel = $1 and game_date = $2`,
+    const { rows } = await getPool(host).query<StoredRoundRow>(
+      `select id, message_ids, max_guesses, username_hints from game_rounds where channel = $1 and game_date = $2`,
       [channel, gameDate]
     );
-    return buildNewRoundFromRow(rows[0].id, gameDate, allUsernames, rows[0].message_ids, rows[0].max_guesses, host);
+    return buildFromStoredRound(channel, gameDate, rows[0], host);
   }
 
   const row = inserted.rows[0];
-  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
+  return buildNewRoundFromRow(row.id, gameDate, usernameHints, row.message_ids, row.max_guesses, host);
 }
 
 // Admin-only: forces today's round to a different pick than whatever is
@@ -256,24 +265,26 @@ export async function rerollRound(channel: string, host?: string | null): Promis
   );
   const nextVariant = (existing.rows[0]?.variant ?? -1) + 1;
   const { userId, chosen } = pickRoundCandidate(eligible, roundSeed(channel, gameDate, nextVariant));
+  const usernameHints = capUsernameHints(allUsernames, chosen[0]?.username, getUsernameHintsLimit(host));
 
   const roundId = crypto.randomUUID();
   const { rows } = await getPool(host).query(
-    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant)
-     values ($1, $2, $3, $4, $5, $6, $7)
+    `insert into game_rounds (id, channel, user_id, message_ids, max_guesses, game_date, variant, username_hints)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
      on conflict (channel, game_date) do update
        set id = excluded.id,
            user_id = excluded.user_id,
            message_ids = excluded.message_ids,
            max_guesses = excluded.max_guesses,
            variant = excluded.variant,
+           username_hints = excluded.username_hints,
            created_at = now()
      returning id, message_ids, max_guesses`,
-    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate, nextVariant]
+    [roundId, channel, userId, chosen.map((c) => c.id), chosen.length, gameDate, nextVariant, usernameHints]
   );
 
   const row = rows[0];
-  return buildNewRoundFromRow(row.id, gameDate, allUsernames, row.message_ids, row.max_guesses, host);
+  return buildNewRoundFromRow(row.id, gameDate, usernameHints, row.message_ids, row.max_guesses, host);
 }
 
 // The RNG seed for a given day's round. `variant` 0 always reproduces the
@@ -337,10 +348,47 @@ function pickRoundCandidate(eligible: EligibleChatters, seed: string): PickedRou
   return { userId, chosen: shuffled.slice(0, MAX_GUESSES) };
 }
 
+// Row shape for the stored-round lookups in createRound (also the race
+// fallback re-select) -- the game_rounds columns createRound actually reads.
+interface StoredRoundRow {
+  id: string;
+  message_ids: number[];
+  max_guesses: number;
+  username_hints: string[] | null;
+}
+
+// Serves an already-created round from the DB without re-running the
+// candidate-message query. Rounds created by this build have their
+// username_hints column populated; rows from before the column existed
+// (NULL hints) are backfilled once, lazily, on first read -- the heavy
+// query still runs, but only once per legacy round instead of on every
+// request, and the answer is unioned back into the hints regardless.
+async function buildFromStoredRound(
+  channel: string,
+  gameDate: string,
+  row: StoredRoundRow,
+  host?: string | null
+): Promise<NewRound> {
+  if (row.username_hints && row.username_hints.length > 0) {
+    return buildNewRoundFromRow(row.id, gameDate, row.username_hints, row.message_ids, row.max_guesses, host);
+  }
+
+  const candidates = await fetchCandidateMessages(channel, host);
+  const eligible = computeEligibleChatters(candidates, host);
+  const allUsernames = eligible.map(([, msgs]) => msgs[0].username).sort();
+  const { rows } = await getPool(host).query<{ username: string }>(
+    'select u.username from messages m join users u on u.id = m.user_id where m.id = $1',
+    [row.message_ids[0]]
+  );
+  const usernameHints = capUsernameHints(allUsernames, rows[0]?.username, getUsernameHintsLimit(host));
+  await getPool(host).query('update game_rounds set username_hints = $1 where id = $2', [usernameHints, row.id]);
+  return buildNewRoundFromRow(row.id, gameDate, usernameHints, row.message_ids, row.max_guesses, host);
+}
+
 async function buildNewRoundFromRow(
   roundId: string,
   gameDate: string,
-  allUsernames: string[],
+  usernameHints: string[],
   messageIds: number[],
   maxGuesses: number,
   host?: string | null
@@ -352,14 +400,13 @@ async function buildNewRoundFromRow(
      where m.id = $1`,
     [messageIds[0]]
   );
-  const correctUsername = rows[0]?.username;
   return {
     roundId,
     gameDate,
     message: rows[0]?.message_text ?? '',
     guessesRemaining: maxGuesses,
     maxGuesses,
-    usernameHints: capUsernameHints(allUsernames, correctUsername, getUsernameHintsLimit(host)),
+    usernameHints,
   };
 }
 
