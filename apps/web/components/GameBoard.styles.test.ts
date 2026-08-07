@@ -74,6 +74,28 @@ describe('variable-length messages wrap instead of overflowing', () => {
   });
 });
 
+describe('long revealed messages do not compress the results view', () => {
+  const css = readCss('./GameBoard.module.css');
+
+  it('never shrinks the panel, so a tall transcript page-scrolls instead of squashing the results under it', () => {
+    // .main is a fixed-height flex column; without flex-shrink: 0 the panel
+    // compresses when the game-over transcript is taller than the viewport,
+    // and the chat log's overflowing messages paint over the guess list.
+    const body = ruleBody(css, 'panel');
+    expect(body).toMatch(/flex-shrink:\s*0/);
+  });
+
+  it('never compresses chat rows inside the capped chat log, so message text cannot overlap', () => {
+    const body = ruleBody(css, 'chatLine');
+    expect(body).toMatch(/flex-shrink:\s*0/);
+  });
+
+  it('keeps a vh fallback for the chat log cap where dvh is unsupported', () => {
+    const body = ruleBody(css, 'chatLogScroll');
+    expect(body).toMatch(/max-height:\s*42vh/);
+  });
+});
+
 describe('variably-sized win/loss images stay contained', () => {
   const css = readCss('./GameBoard.module.css');
 

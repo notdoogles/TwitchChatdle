@@ -7,6 +7,11 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* .main is a fixed-height flex column (body caps at 100dvh), so without
+     this a tall game-over transcript shrinks the panel instead of letting the
+     page scroll -- squashing the chat log so its overflowing messages paint
+     over the results below. */
+  flex-shrink: 0;
 }
 
 .panelHeader {
@@ -84,6 +89,9 @@
    transcript flows into the page scroll instead of being trapped behind an
    inner scroll container the user can't get past. */
 .chatLogScroll {
+  /* Fallback for browsers without dvh support (older Safari/Chrome, in-app
+     webviews): keeps the cap so the guess box can't be pushed off-screen. */
+  max-height: 42vh;
   max-height: 42dvh;
   overflow-y: auto;
 }
@@ -92,6 +100,9 @@
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.5;
+  /* Chat rows must not compress inside the capped .chatLogScroll: a shrunk
+     row's text overflows onto the next row instead of wrapping normally. */
+  flex-shrink: 0;
   /* Row itself lays out username + message, not just their inline flow, so
      both always align to the same top edge regardless of how many badge
      pills the username wraps to (a plain inline layout let the username's

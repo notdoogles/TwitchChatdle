@@ -12,6 +12,9 @@
 .header {
   width: 100%;
   max-width: 480px;
+  /* Same flex-shrink guard as .panel: .main is a fixed-height flex column,
+     so without this a tall transcript compresses the header too. */
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
