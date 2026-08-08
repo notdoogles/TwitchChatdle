@@ -159,14 +159,25 @@ as the badge-image lookups:
    and sets a 30-day httpOnly session cookie.
 3. `GET /api/auth/logout` deletes the session.
 
-**Setup:** in the Twitch dev console for the app, register every hostname
-the game is served on as a redirect URI pointing at
-`https://<host>/api/auth/callback` (e.g. each tenant domain, plus
-`http://localhost:3000/api/auth/callback` for local dev). The redirect URI
-is derived from the request origin, so no per-host config is needed in code.
-Sign-in is fully optional: guests play anonymously and simply don't appear
-on leaderboards. Without `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` the sign
--in link is unavailable but nothing else changes.
+**Setup:** in the Twitch dev console for the app, register **every hostname
+the game is served on** as a redirect URI pointing at
+`https://<host>/api/auth/callback`. For this deployment that means all four
+tenant domains:
+
+- `https://elliebdle.doogl.es/api/auth/callback`
+- `https://whisqeydle.doogl.es/api/auth/callback`
+- `https://hannerdle.doogl.es/api/auth/callback`
+- `https://freezerdle.doogl.es/api/auth/callback`
+
+plus whatever domain serves the non-tenant deployment, and
+`http://localhost:3000/api/auth/callback` for local dev. A missing (or
+path-wrong) entry makes Twitch reject the login with `redirect_mismatch`
+and bounce you to a registered URI with `?error=...` in the URL. The
+redirect URI is derived from the request origin, so no per-host config is
+needed in code. Sign-in is fully optional: guests play anonymously and
+simply don't appear on leaderboards. Without
+`TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` the sign-in link is unavailable
+but nothing else changes.
 
 ## Leaderboard
 
