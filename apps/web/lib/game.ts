@@ -454,6 +454,7 @@ async function fetchMessagesByIds(messageIds: number[], host?: string | null): P
 
 interface RoundRow {
   channel: string;
+  game_date: string;
   message_ids: number[];
   max_guesses: number;
   username: string;
@@ -466,7 +467,7 @@ interface RoundRow {
 // identically when the round can't be found.
 async function fetchRound(roundId: string, host?: string | null): Promise<RoundRow> {
   const { rows } = await getPool(host).query<RoundRow>(
-    `select gr.channel, gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
+    `select gr.channel, gr.game_date, gr.message_ids, gr.max_guesses, u.username, ucs.color, ucs.badges
      from game_rounds gr
      join users u on u.id = gr.user_id
      left join user_channel_state ucs on ucs.user_id = gr.user_id and ucs.channel = gr.channel
@@ -477,15 +478,45 @@ async function fetchRound(roundId: string, host?: string | null): Promise<RoundR
   return rows[0];
 }
 
+// Trust-based leaderboard recording, called exactly once per finished round
+// (win or loss). The client reports how many guesses it used -- the same
+// trust boundary as the rest of the stateless game -- so the only
+// server-side guard is the unique (user, channel, game_date) constraint in
+// game_results, which makes replays and same-day farming no-ops. Anonymous
+// players (no session) record nothing. Recording failures must never break
+// grading, so they're logged and swallowed.
+async function recordResult(
+  round: RoundRow,
+  guessesUsed: number,
+  solved: boolean,
+  playerUserId: number | null | undefined,
+  host?: string | null
+): Promise<void> {
+  if (!playerUserId) return;
+  try {
+    await getPool(host).query(
+      `insert into game_results (user_id, channel, game_date, guesses_used, solved)
+       values ($1, $2, $3, $4, $5)
+       on conflict (user_id, channel, game_date) do nothing`,
+      [playerUserId, round.channel, round.game_date, guessesUsed, solved]
+    );
+  } catch (err) {
+    console.error('Failed to record round result:', err instanceof Error ? err.message : err);
+  }
+}
+
 // Grading is stateless and per-request: the client tracks how many guesses
 // it has already used (in localStorage) and passes that count in. This lets
 // every player attempt the same shared daily round independently without a
 // server-side "guesses used" counter that different players would stomp on.
+// When the round ends and a logged-in player finished it, the result is
+// recorded for the leaderboard (see recordResult above).
 export async function submitGuess(
   roundId: string,
   guessRaw: string,
   guessNumber: number,
-  host?: string | null
+  host?: string | null,
+  playerUserId?: number | null
 ): Promise<GuessResult> {
   const round = await fetchRound(roundId, host);
 
@@ -499,6 +530,7 @@ export async function submitGuess(
   if (correct) {
     const allMessages = await fetchMessagesByIds(round.message_ids, host);
     const answerHint = await buildAnswerHint(round.badges, round.color, round.channel, host);
+    await recordResult(round, guessNumber + 1, true, playerUserId, host);
     return { correct: true, gameOver: true, correctUsername: round.username, allMessages, answerHint };
   }
 
@@ -518,6 +550,7 @@ export async function submitGuess(
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids, host);
     answerHint = await buildAnswerHint(round.badges, round.color, round.channel, host);
+    await recordResult(round, guessNumber + 1, false, playerUserId, host);
   }
 
   return {
@@ -536,8 +569,14 @@ export async function submitGuess(
 // exactly like a wrong guess -- including revealing the easy-mode hint the
 // next round would normally unlock, so skipping can't be used to dodge the
 // hint schedule. Skipping the round's last message ends it as a loss, same
-// as running out of guesses.
-export async function skipMessage(roundId: string, guessNumber: number, host?: string | null): Promise<GuessResult> {
+// as running out of guesses. A logged-in player's finished round is recorded
+// for the leaderboard, exactly like a wrong-guess loss.
+export async function skipMessage(
+  roundId: string,
+  guessNumber: number,
+  host?: string | null,
+  playerUserId?: number | null
+): Promise<GuessResult> {
   const round = await fetchRound(roundId, host);
 
   if (!Number.isInteger(guessNumber) || guessNumber < 0 || guessNumber >= round.max_guesses) {
@@ -560,6 +599,7 @@ export async function skipMessage(roundId: string, guessNumber: number, host?: s
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids, host);
     answerHint = await buildAnswerHint(round.badges, round.color, round.channel, host);
+    await recordResult(round, guessNumber + 1, false, playerUserId, host);
   }
 
   return {

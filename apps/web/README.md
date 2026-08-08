@@ -91,11 +91,14 @@ tenant's game.
 
 1. Push this folder to a GitHub repo, import it in Vercel.
 2. In the Vercel project settings, add env vars: `DATABASE_URL`,
-   `TWITCH_CHANNEL`, and optionally `GAME_NAME`, `WINNER_MESSAGE`,
-   `LOSER_MESSAGE`, `RESET_HOUR`, `RESET_TIMEZONE`,
-   `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`,
-   `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET`, `AD_SIDEBAR_IMAGE`/
-   `AD_SIDEBAR_TEXT`, and `WINNER_GIF` (see `.env.example` for defaults).
+   `TWITCH_CHANNEL`, `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` (needed for
+   the "Sign in with Twitch" SSO and badge images), and optionally
+   `GAME_NAME`, `WINNER_MESSAGE`, `LOSER_MESSAGE`, `RESET_HOUR`,
+   `RESET_TIMEZONE`, `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`,
+   `AD_SIDEBAR_IMAGE`/`AD_SIDEBAR_TEXT`, and `WINNER_GIF` (see
+   `.env.example` for defaults). If you enable SSO, register each domain on
+   the project as a redirect URI for the Twitch app (see the SSO section
+   above).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
    connection string (port `6543`), not the direct connection -- Vercel's
    serverless functions open a lot of short-lived connections and the
@@ -138,7 +141,52 @@ midnight `America/New_York`. Set `RESET_HOUR` (0-23) and/or
 e.g. `RESET_HOUR=6` resets at 6am instead of midnight in the same timezone.
 This is read by both the server (`lib/game.ts`, via `lib/config.ts`) and the
 client (`GameBoard.tsx`'s countdown timer), so they always agree on the
-boundary.
+boundary. The daily leaderboard is keyed by this same `game_date`, so it
+resets at exactly the puzzle's reset time with no extra configuration.
+
+## Signing in with Twitch (optional SSO)
+
+Players can optionally sign in with their Twitch account (header link). It's
+a hand-rolled OAuth 2.0 **Authorization Code + PKCE** flow -- no auth
+library -- using the same `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` env vars
+as the badge-image lookups:
+
+1. `GET /api/auth/login` starts the flow, stashing the PKCE verifier in a
+   short-lived httpOnly cookie and redirecting to Twitch's consent page.
+2. Twitch redirects back to `<origin>/api/auth/callback`, which exchanges
+   the code, fetches the player's profile from Helix, links it to their
+   `users` row via `twitch_user_id` (the same key the chat ingester uses),
+   and sets a 30-day httpOnly session cookie.
+3. `GET /api/auth/logout` deletes the session.
+
+**Setup:** in the Twitch dev console for the app, register every hostname
+the game is served on as a redirect URI pointing at
+`https://<host>/api/auth/callback` (e.g. each tenant domain, plus
+`http://localhost:3000/api/auth/callback` for local dev). The redirect URI
+is derived from the request origin, so no per-host config is needed in code.
+Sign-in is fully optional: guests play anonymously and simply don't appear
+on leaderboards. Without `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` the sign
+-in link is unavailable but nothing else changes.
+
+## Leaderboard
+
+A "Leaderboards" button in the header opens a modal showing players by their
+Twitch display name, with **Daily / Weekly / All-time** tabs:
+
+- **Daily** -- today's solvers (same `game_date` as the puzzle, so it
+  resets with the answer), ranked by fewest guesses, then earliest finish.
+- **Weekly** -- points summed over the current Monday-Sunday week.
+- **All-time** -- lifetime points.
+
+Solving earns points by guesses remaining: 1 guess = 5 pts, 5 guesses =
+1 pt; losses score 0 and never appear. Weekly/all-time ties break by fewer
+total guesses, then earlier last solve. A signed-in player's own row is
+highlighted. Results are recorded server-side when a finished round is
+graded, and are **trust-based**: the client reports its own guess count
+(same trust boundary as the stateless game), with a unique
+`(user_id, channel, game_date)` constraint on `game_results` so replays and
+same-day farming are ignored. The leaderboard fetches fresh data every time
+the modal is opened, so it always reflects the latest solves.
 
 ## Win/loss images
 
