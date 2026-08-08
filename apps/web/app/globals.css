@@ -8,9 +8,6 @@
   --text-secondary: #adadb8;
   --accent: #9147ff;
   --accent-text: #ffffff;
-  /* Ink color for text on top of --accent in the "twitch login" button:
-     dark mode reads black-on-purple. */
-  --accent-ink: #000000;
   --warn: #f2a33c;
   --success: #3fb950;
   --danger: #f25c54;
@@ -26,8 +23,6 @@
   --text-secondary: #53535f;
   --accent: #772ce8;
   --accent-text: #ffffff;
-  /* Light mode reads white-on-purple (see the dark-theme --accent-ink). */
-  --accent-ink: #ffffff;
   --warn: #a85f00;
   --success: #1a7f37;
   --danger: #c22c2c;
