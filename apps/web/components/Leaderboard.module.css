@@ -54,6 +54,26 @@
   color: var(--accent-text);
 }
 
+/* Close button shown in the card header when the leaderboard is rendered
+   inside a modal. */
+.closeButton {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
 .list {
   list-style: none;
   margin: 0;

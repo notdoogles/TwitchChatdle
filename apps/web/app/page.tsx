@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import GameBoard from '@/components/GameBoard';
 import AuthControl from '@/components/AuthControl';
+import LeaderboardsModal from '@/components/LeaderboardsModal';
 import RulesModal from '@/components/RulesModal';
 import ThemeToggle from '@/components/ThemeToggle';
 import { getChannel, getGameName, getImagesSlug, getLoserMessage, getResetHour, getResetTimezone, getWinnerGif, getWinnerMessage } from '@/lib/config';
@@ -59,7 +60,10 @@ export default async function Home() {
           <p className={styles.subtitle}>Five messages. Five guesses. Who said it?</p>
         </div>
         <div className={styles.headerRight}>
-          <AuthControl user={initialUser} />
+          <div className={styles.headerActions}>
+            <LeaderboardsModal signedIn={!!initialUser} />
+            <AuthControl user={initialUser} />
+          </div>
           <ThemeToggle />
         </div>
       </div>
@@ -74,7 +78,6 @@ export default async function Home() {
         winnerGif={getWinnerGif(host)}
         initialRound={initialRound}
         initialError={initialError}
-        initialUser={initialUser}
       />
     </main>
   );

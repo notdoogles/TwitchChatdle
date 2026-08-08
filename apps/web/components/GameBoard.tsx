@@ -12,11 +12,9 @@ import {
 } from '@/lib/config';
 import { SKIPPED_GUESS_LABEL, buildShareText } from '@/lib/shareText';
 import type { RoundHint } from '@/lib/hints';
-import type { SessionUser } from '@/lib/auth';
 import { applyRoundResult, InitialRound, pickResultImage, RoundState, Status } from './roundState';
 import ChatLog from './ChatLog';
 import GuessForm from './GuessForm';
-import Leaderboard from './Leaderboard';
 import ResultsModal from './ResultsModal';
 
 interface GameBoardProps {
@@ -40,10 +38,6 @@ interface GameBoardProps {
   // yet, DB down). Seeded once into the error state; "Try again" re-runs the
   // client fetch so it can recover without a full page reload.
   initialError?: string | null;
-  // The signed-in player, if any (resolved server-side). Drives the
-  // leaderboard's "signed in" copy; results are recorded via the session
-  // cookie server-side, not through this prop.
-  initialUser?: SessionUser | null;
 }
 
 interface StoredState {
@@ -162,7 +156,6 @@ export default function GameBoard({
   winnerGif,
   initialRound,
   initialError,
-  initialUser,
 }: GameBoardProps) {
   const storagePrefix = `${slugify(gameName)}:`;
   const [status, setStatus] = useState<Status>('loading');
@@ -188,9 +181,6 @@ export default function GameBoard({
   // True while a guess/skip request is in flight: guards against a rapid
   // double-Enter submitting the same guess twice with a stale guessNumber.
   const [submitting, setSubmitting] = useState(false);
-  // Bumped whenever a round ends so the leaderboard refetches (a fresh solve
-  // or the player dropping off a board shows up without a page reload).
-  const [leaderboardSignal, setLeaderboardSignal] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   // The SSR error is seeded once; "Try again" must fall through to the real
   // client fetch instead of re-showing the same server error forever.
@@ -373,7 +363,6 @@ export default function GameBoard({
     setAllMessages(next.allMessages);
     setModalOpen(openModal);
     setShowAllMessages(false);
-    if (openModal) setLeaderboardSignal((n) => n + 1);
   }
 
   async function handleSubmit(guess: string): Promise<boolean> {
@@ -590,8 +579,6 @@ export default function GameBoard({
         </button>
       )}
     </div>
-
-    <Leaderboard signedIn={!!initialUser} refreshSignal={leaderboardSignal} />
 
     {(status === 'won' || status === 'lost') && (
       <ResultsModal

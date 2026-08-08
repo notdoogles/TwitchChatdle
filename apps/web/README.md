@@ -170,8 +170,8 @@ on leaderboards. Without `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` the sign
 
 ## Leaderboard
 
-Below the game panel, a leaderboard shows players by their Twitch display
-name, with **Daily / Weekly / All-time** tabs:
+A "Leaderboards" button in the header opens a modal showing players by their
+Twitch display name, with **Daily / Weekly / All-time** tabs:
 
 - **Daily** -- today's solvers (same `game_date` as the puzzle, so it
   resets with the answer), ranked by fewest guesses, then earliest finish.
@@ -185,8 +185,8 @@ highlighted. Results are recorded server-side when a finished round is
 graded, and are **trust-based**: the client reports its own guess count
 (same trust boundary as the stateless game), with a unique
 `(user_id, channel, game_date)` constraint on `game_results` so replays and
-same-day farming are ignored. The leaderboard refreshes automatically when
-you finish a round.
+same-day farming are ignored. The leaderboard fetches fresh data every time
+the modal is opened, so it always reflects the latest solves.
 
 ## Win/loss images
 

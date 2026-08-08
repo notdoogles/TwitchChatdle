@@ -1,19 +1,20 @@
 .signIn {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   padding: 6px 12px;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--accent);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
   text-decoration: none;
   white-space: nowrap;
 }
 
 .signIn:hover {
-  border-color: var(--accent);
+  filter: brightness(1.08);
 }
 
 .box {

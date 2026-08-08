@@ -25,11 +25,12 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: 'alltime', label: 'All-time' },
 ];
 
-// Fetches /api/leaderboard for the selected period. `refreshSignal` (bumped
-// by GameBoard when a round ends) triggers a refetch so a fresh solve shows
-// up without a page reload. `isYou` highlighting is computed server-side
-// from the session cookie, so it just works after a login redirect.
-export default function Leaderboard({ signedIn, refreshSignal = 0 }: { signedIn: boolean; refreshSignal?: number }) {
+// Fetches /api/leaderboard for the selected period. Each mount fetches
+// fresh data, so when the card is shown inside a modal it always reflects
+// the latest solves. `isYou` highlighting is computed server-side from the
+// session cookie, so it just works after a login redirect. `onClose`
+// (optional) renders a close button in the header for modal usage.
+export default function Leaderboard({ signedIn, onClose }: { signedIn: boolean; onClose?: () => void }) {
   const [period, setPeriod] = useState<Period>('daily');
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [failed, setFailed] = useState(false);
@@ -47,7 +48,7 @@ export default function Leaderboard({ signedIn, refreshSignal = 0 }: { signedIn:
 
   useEffect(() => {
     load(period);
-  }, [load, period, refreshSignal]);
+  }, [load, period]);
 
   const emptyText =
     period === 'daily'
@@ -73,6 +74,11 @@ export default function Leaderboard({ signedIn, refreshSignal = 0 }: { signedIn:
             </button>
           ))}
         </div>
+        {onClose && (
+          <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close leaderboards">
+            ×
+          </button>
+        )}
       </div>
 
       {failed ? (
