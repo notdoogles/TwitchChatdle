@@ -24,7 +24,13 @@ export async function GET(req: Request) {
   const verifier = generateCodeVerifier();
   const state = crypto.randomBytes(16).toString('base64url');
 
-  const res = NextResponse.redirect(buildAuthorizeUrl(clientId, `${origin}/api/auth/callback`, state, verifier));
+  const redirectUri = `${origin}/api/auth/callback`;
+  // Diagnostic for SSO failures (redirect_mismatch): logs the exact URI and
+  // app this deployment sends, so it can be compared against the redirect
+  // URLs registered for this Client ID in the Twitch dev console.
+  console.log('twitch-login', { clientId, redirectUri, host: req.headers.get('host') });
+
+  const res = NextResponse.redirect(buildAuthorizeUrl(clientId, redirectUri, state, verifier));
   res.cookies.set(PKCE_COOKIE, JSON.stringify({ verifier, state }), {
     httpOnly: true,
     sameSite: 'lax',

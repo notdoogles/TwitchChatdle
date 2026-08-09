@@ -35,7 +35,17 @@ export async function GET(req: Request) {
 
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
-  if (!code || url.searchParams.has('error')) return home;
+  const error = url.searchParams.get('error');
+  if (!code || error) {
+    // Twitch bounced the login back with an error (e.g. redirect_mismatch).
+    // Log it so the failing redirect_uri (see /api/auth/login's
+    // `twitch-login` line) can be matched against the app's registered
+    // redirect URLs.
+    if (error) {
+      console.error('twitch-login rejected by Twitch', { error, description: url.searchParams.get('error_description') });
+    }
+    return home;
+  }
 
   // Bind this callback to the flow this browser actually started (verifier
   // + state), so a forged callback can't mint a session for an attacker.
