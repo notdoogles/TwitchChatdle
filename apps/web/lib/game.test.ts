@@ -329,6 +329,8 @@ function setupSubmitGuessMocks(round: {
   message_ids: number[];
   max_guesses: number;
   username: string;
+  game_date?: string;
+  channel?: string;
   color?: string | null;
   badges?: Record<string, string> | null;
 } | null, messagesById: Map<number, string>) {
@@ -339,6 +341,9 @@ function setupSubmitGuessMocks(round: {
     if (sql.trim() === 'select message_text from messages where id = $1') {
       const id = params[0] as number;
       return { rows: [{ message_text: messagesById.get(id) ?? null }] };
+    }
+    if (sql.includes('insert into game_results')) {
+      return { rows: [] };
     }
     throw new Error(`Unexpected query in submitGuess test: ${sql}`);
   });
@@ -503,5 +508,70 @@ describe('skipMessage', () => {
       color: '#FF0000',
       channelBadges: [{ label: 'Moderator', iconUrl: null }],
     });
+  });
+});
+
+describe('leaderboard result recording', () => {
+  const messageIds = [1, 2, 3, 4, 5];
+  const messagesById = new Map(messageIds.map((id) => [id, `message #${id}`]));
+
+  // The shared round fixture, plus the channel/game_date the round lookup
+  // now resolves (needed by the game_results insert).
+  const signedInRound = {
+    message_ids: messageIds,
+    max_guesses: 5,
+    username: 'Alice',
+    color: '#FF0000',
+    badges: { moderator: '1', premium: '1' },
+    channel: 'somechannel',
+    game_date: '2024-01-15',
+  };
+
+  function resultInsertCall() {
+    return mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('insert into game_results')
+    );
+  }
+
+  it('records a solve for a signed-in player who guesses correctly', async () => {
+    setupSubmitGuessMocks(signedInRound, messagesById);
+    const result = await submitGuess('round-1', 'alice', 0, undefined, 42);
+    expect(result.correct).toBe(true);
+
+    const call = resultInsertCall();
+    expect(call).toBeTruthy();
+    expect(call?.[0]).toContain('on conflict (user_id, channel, game_date) do nothing');
+    expect(call?.[1]).toEqual([42, 'somechannel', '2024-01-15', 1, true]);
+  });
+
+  it('records a loss when a signed-in player runs out of guesses', async () => {
+    setupSubmitGuessMocks(signedInRound, messagesById);
+    const result = await submitGuess('round-1', 'bob', 4, undefined, 42);
+    expect(result.gameOver).toBe(true);
+
+    const call = resultInsertCall();
+    expect(call?.[1]).toEqual([42, 'somechannel', '2024-01-15', 5, false]);
+  });
+
+  it('records a loss when a signed-in player skips the last message', async () => {
+    setupSubmitGuessMocks(signedInRound, messagesById);
+    const result = await skipMessage('round-1', 4, undefined, 42);
+    expect(result.gameOver).toBe(true);
+
+    const call = resultInsertCall();
+    expect(call?.[1]).toEqual([42, 'somechannel', '2024-01-15', 5, false]);
+  });
+
+  it('records nothing for an anonymous player', async () => {
+    setupSubmitGuessMocks(signedInRound, messagesById);
+    await submitGuess('round-1', 'alice', 0);
+    expect(resultInsertCall()).toBeUndefined();
+  });
+
+  it('records nothing mid-round on a wrong guess', async () => {
+    setupSubmitGuessMocks(signedInRound, messagesById);
+    const result = await submitGuess('round-1', 'bob', 0, undefined, 42);
+    expect(result.gameOver).toBe(false);
+    expect(resultInsertCall()).toBeUndefined();
   });
 });
