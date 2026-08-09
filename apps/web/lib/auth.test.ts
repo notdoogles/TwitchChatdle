@@ -102,12 +102,26 @@ describe('fetchTwitchProfile', () => {
     vi.stubEnv('TWITCH_CLIENT_ID', 'cid');
     const fetchMock = vi.fn(async () => ({
       ok: true,
-      json: async () => ({ data: [{ id: '12345', login: 'coolguy', display_name: 'CoolGuy' }] }),
+      json: async () => ({
+        data: [
+          {
+            id: '12345',
+            login: 'coolguy',
+            display_name: 'CoolGuy',
+            profile_image_url: 'https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-default-150x150.png',
+          },
+        ],
+      }),
     }));
     vi.stubGlobal('fetch', fetchMock);
 
     const profile = await fetchTwitchProfile('at-1');
-    expect(profile).toEqual({ id: '12345', login: 'coolguy', displayName: 'CoolGuy' });
+    expect(profile).toEqual({
+      id: '12345',
+      login: 'coolguy',
+      displayName: 'CoolGuy',
+      profileImageUrl: 'https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-default-150x150.png',
+    });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://api.twitch.tv/helix/users');
@@ -121,17 +135,32 @@ describe('fetchTwitchProfile', () => {
       'fetch',
       vi.fn(async () => ({ ok: true, json: async () => ({ data: [{ id: '1', login: 'plain' }] }) }))
     );
-    await expect(fetchTwitchProfile('at-1')).resolves.toEqual({ id: '1', login: 'plain', displayName: 'plain' });
+    await expect(fetchTwitchProfile('at-1')).resolves.toEqual({
+      id: '1',
+      login: 'plain',
+      displayName: 'plain',
+      profileImageUrl: null,
+    });
   });
 });
 
 describe('upsertTwitchUser / createSession / deleteSession / getSessionUser', () => {
   it('upserts the users row by twitch_user_id and returns its id', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 7 }] });
-    const id = await upsertTwitchUser({ id: '12345', login: 'CoolGuy', displayName: 'CoolGuy' });
+    const id = await upsertTwitchUser({
+      id: '12345',
+      login: 'CoolGuy',
+      displayName: 'CoolGuy',
+      profileImageUrl: 'https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-default-150x150.png',
+    });
     expect(id).toBe(7);
     expect(mockedQuery.mock.calls[0][0]).toContain('on conflict (twitch_user_id)');
-    expect(mockedQuery.mock.calls[0][1]).toEqual(['12345', 'coolguy', 'CoolGuy']);
+    expect(mockedQuery.mock.calls[0][1]).toEqual([
+      '12345',
+      'coolguy',
+      'CoolGuy',
+      'https://static-cdn.jtvnw.net/user-default-pictures-uv/cdd517fe-default-150x150.png',
+    ]);
   });
 
   it('creates a session with a fresh token and expiry', async () => {
@@ -159,11 +188,19 @@ describe('upsertTwitchUser / createSession / deleteSession / getSessionUser', ()
   });
 
   it('returns the display name (falling back to login) for a valid session', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, username: 'login1', display_name: 'Display Name' }] });
-    await expect(getSessionUser('sess-1')).resolves.toEqual({ userId: 7, username: 'Display Name' });
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ user_id: 7, username: 'login1', display_name: 'Display Name', profile_image_url: 'https://pic.example/1.png' }],
+    });
+    await expect(getSessionUser('sess-1')).resolves.toEqual({
+      userId: 7,
+      username: 'Display Name',
+      avatarUrl: 'https://pic.example/1.png',
+    });
 
-    mockedQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, username: 'login1', display_name: null }] });
-    await expect(getSessionUser('sess-1')).resolves.toEqual({ userId: 7, username: 'login1' });
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ user_id: 7, username: 'login1', display_name: null, profile_image_url: null }],
+    });
+    await expect(getSessionUser('sess-1')).resolves.toEqual({ userId: 7, username: 'login1', avatarUrl: null });
   });
 
   it('returns null for an unknown or expired session', async () => {

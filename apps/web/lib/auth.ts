@@ -22,12 +22,16 @@ export interface SessionUser {
   userId: number;
   // Display name (falls back to login) shown in the header / leaderboard.
   username: string;
+  // Twitch profile image (Helix /users profile_image_url), captured at
+  // login. Null for users who logged in before this column existed.
+  avatarUrl: string | null;
 }
 
 export interface TwitchProfile {
   id: string;
   login: string;
   displayName: string;
+  profileImageUrl: string | null;
 }
 
 // Opaque random PKCE code_verifier, url-safe so it survives the round trip
@@ -99,10 +103,17 @@ export async function fetchTwitchProfile(accessToken: string): Promise<TwitchPro
     headers: { Authorization: `Bearer ${accessToken}`, 'Client-Id': clientId },
   });
   if (!res.ok) throw new Error('Could not fetch Twitch user.');
-  const data = (await res.json()) as { data?: { id?: string; login?: string; display_name?: string }[] };
+  const data = (await res.json()) as {
+    data?: { id?: string; login?: string; display_name?: string; profile_image_url?: string }[];
+  };
   const user = data.data?.[0];
   if (!user?.id || !user?.login) throw new Error('Twitch returned no user.');
-  return { id: user.id, login: user.login, displayName: user.display_name || user.login };
+  return {
+    id: user.id,
+    login: user.login,
+    displayName: user.display_name || user.login,
+    profileImageUrl: user.profile_image_url || null,
+  };
 }
 
 // Creates (or refreshes) the users row for a signed-in player and returns
@@ -110,12 +121,13 @@ export async function fetchTwitchProfile(accessToken: string): Promise<TwitchPro
 // with an existing chatter row for the same twitch_user_id.
 export async function upsertTwitchUser(profile: TwitchProfile, host?: string | null): Promise<number> {
   const { rows } = await getPool(host).query<{ id: number }>(
-    `insert into users (twitch_user_id, username, display_name)
-     values ($1, $2, $3)
+    `insert into users (twitch_user_id, username, display_name, profile_image_url)
+     values ($1, $2, $3, $4)
      on conflict (twitch_user_id)
-     do update set username = excluded.username, display_name = excluded.display_name
+     do update set username = excluded.username, display_name = excluded.display_name,
+       profile_image_url = excluded.profile_image_url
      returning id`,
-    [profile.id, profile.login.toLowerCase(), profile.displayName]
+    [profile.id, profile.login.toLowerCase(), profile.displayName, profile.profileImageUrl]
   );
   return rows[0].id;
 }
@@ -141,13 +153,22 @@ export async function getSessionUser(
   host?: string | null
 ): Promise<SessionUser | null> {
   if (!sessionId) return null;
-  const { rows } = await getPool(host).query<{ user_id: number; username: string; display_name: string | null }>(
-    `select s.user_id, u.username, u.display_name
+  const { rows } = await getPool(host).query<{
+    user_id: number;
+    username: string;
+    display_name: string | null;
+    profile_image_url: string | null;
+  }>(
+    `select s.user_id, u.username, u.display_name, u.profile_image_url
      from sessions s
      join users u on u.id = s.user_id
      where s.id = $1 and s.expires_at > now()`,
     [sessionId]
   );
   if (rows.length === 0) return null;
-  return { userId: rows[0].user_id, username: rows[0].display_name || rows[0].username };
+  return {
+    userId: rows[0].user_id,
+    username: rows[0].display_name || rows[0].username,
+    avatarUrl: rows[0].profile_image_url,
+  };
 }

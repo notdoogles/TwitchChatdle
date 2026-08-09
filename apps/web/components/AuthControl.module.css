@@ -32,6 +32,13 @@
   white-space: nowrap;
 }
 
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .link {
   flex-shrink: 0;
   color: var(--text-secondary);

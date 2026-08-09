@@ -159,6 +159,13 @@ as the badge-image lookups:
    and sets a 30-day httpOnly session cookie.
 3. `GET /api/auth/logout` deletes the session.
 
+Once signed in, the header shows the player's Twitch **avatar** (hover it to
+see their username) plus a sign-out link, instead of the plain username.
+The avatar URL is the Helix `profile_image_url` captured at login and stored
+on the `users` row (`profile_image_url`), refreshed on every login; the
+leaderboard keeps showing the display name. Players who signed in before
+avatars existed fall back to the username until their next login.
+
 **Setup:** in the Twitch dev console for the app, register **every hostname
 the game is served on** as a redirect URI pointing at
 `https://<host>/api/auth/callback`. For this deployment that means all four

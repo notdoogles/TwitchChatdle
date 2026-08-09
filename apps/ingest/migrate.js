@@ -35,6 +35,12 @@ create table if not exists users (
 alter table users add column if not exists color text;
 alter table users add column if not exists badges jsonb;
 
+-- The signed-in player's Twitch profile image (Helix /users
+-- profile_image_url), captured at SSO login and refreshed on every login.
+-- Null for chatters the IRC worker has only ever seen -- only logged-in
+-- users' rows get it (apps/web/lib/auth.ts upsertTwitchUser).
+alter table users add column if not exists profile_image_url text;
+
 -- Per-channel snapshot of the chatter's most recently observed IRC tags in
 -- *that* channel, refreshed on every message (see apps/ingest/index.js
 -- upsertChannelState). Used by apps/web's easy-mode hints (lib/game.ts):
