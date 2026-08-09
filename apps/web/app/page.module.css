@@ -41,6 +41,25 @@
   margin: 0;
 }
 
+/* Right side of the header: sign-in/auth control stacked above the theme
+   toggle so the row stays compact on narrow screens. */
+.headerRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Leaderboards + auth buttons side by side ("next to" each other). */
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* Phone breakpoint: 600px comfortably covers every phone (portrait and
    landscape) while staying above the 480px panel, so the panel is already
    edge-to-edge here and the extra side padding is just wasted width. */

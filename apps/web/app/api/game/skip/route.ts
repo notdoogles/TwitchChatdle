@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
+import { cookies } from 'next/headers';
 import { skipMessage } from '@/lib/game';
+import { getSessionUser, SESSION_COOKIE } from '@/lib/auth';
 import { resolveHost } from '@/lib/previewTenant';
 import { getRequestContext } from '@/lib/requestContext';
 import { logRequest } from '@/lib/requestLog';
@@ -27,7 +29,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await skipMessage(roundId, guessNumber, host);
+    // Same best-effort session resolution as /api/game/guess: a finished
+    // round is recorded for the leaderboard when the player is signed in.
+    const player = await getSessionUser(cookies().get(SESSION_COOKIE)?.value, host);
+    const result = await skipMessage(roundId, guessNumber, host, player?.userId ?? null);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not skip that message.';

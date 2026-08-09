@@ -144,13 +144,48 @@ create table if not exists channels (
   twitch_channel_id text not null,
   updated_at timestamptz not null default now()
 );
+
+-- Owned by apps/web. Twitch SSO login sessions: an opaque random token
+-- (stored in an httpOnly cookie) mapped to a users row. Same multi-tenant
+-- note as game_rounds: created here so one migration sets up both apps, but
+-- only apps/web reads/writes it.
+create table if not exists sessions (
+  id text primary key,
+  user_id integer not null references users(id),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create index if not exists idx_sessions_expires_at on sessions(expires_at);
+
+-- Owned by apps/web. One recorded round result per (player, channel, game
+-- day), written when a logged-in player finishes a round (win or loss). The
+-- client reports how many guesses it used (same trust boundary as the rest
+-- of the stateless game), so the unique (user_id, channel, game_date)
+-- constraint is the only server-side guard: it makes replays/same-day
+-- farming no-ops. Leaderboard points are derived from guesses_used/solved
+-- at query time, not stored.
+create table if not exists game_results (
+  id bigserial primary key,
+  user_id integer not null references users(id),
+  channel text not null,
+  game_date date not null,
+  guesses_used integer not null,
+  solved boolean not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_game_results_user_channel_date
+  on game_results(user_id, channel, game_date);
+create index if not exists idx_game_results_channel_date
+  on game_results(channel, game_date);
 `;
 
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
   console.log(
-    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, request_log, channels'
+    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, request_log, channels, sessions, game_results'
   );
   await pool.end();
 }
