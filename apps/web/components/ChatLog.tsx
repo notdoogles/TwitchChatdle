@@ -20,12 +20,19 @@ interface ChatLogProps {
 // Renders a real Twitch badge image when one was resolved server-side
 // (see lib/badgeImages.ts); falls back to the plain text label (e.g. when
 // badges.twitch.tv is unreachable, or the badge has no channel/global
-// image at all) so the hint is never silently missing.
-function BadgePill({ label, iconUrl }: { label: string; iconUrl?: string | null }) {
+// image at all) so the hint is never silently missing. Hovering shows the
+// badge's full tooltip (e.g. "Subscriber (30 months)") when one exists,
+// otherwise just the label.
+function BadgePill({ label, iconUrl, title }: { label: string; iconUrl?: string | null; title?: string | null }) {
+  const tooltip = title ?? label;
   if (iconUrl) {
-    return <img src={iconUrl} alt={label} title={label} className={styles.badgeIcon} />;
+    return <img src={iconUrl} alt={label} title={tooltip} className={styles.badgeIcon} />;
   }
-  return <span className={styles.badgePill}>{label}</span>;
+  return (
+    <span className={styles.badgePill} title={tooltip}>
+      {label}
+    </span>
+  );
 }
 
 export default function ChatLog({
@@ -69,13 +76,13 @@ export default function ChatLog({
                   .slice()
                   .reverse()
                   .map((badge, badgeIndex) => (
-                    <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} title={badge.title} />
                   ))}
                 {(answerHint.globalBadges ?? [])
                   .slice()
                   .reverse()
                   .map((badge, badgeIndex) => (
-                    <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                    <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} title={badge.title} />
                   ))}
                 <span style={answerHint.color ? { color: answerHint.color } : undefined}>
                   {correctUsername}
@@ -91,7 +98,7 @@ export default function ChatLog({
                     .slice()
                     .reverse()
                     .map((badge, badgeIndex) => (
-                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                      <BadgePill key={`channel-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} title={badge.title} />
                     ))}
                 {easyMode && hints.globalBadges !== undefined && hints.globalBadges.length === 0 && (
                   <BadgePill label={NONE_LABEL} />
@@ -101,7 +108,7 @@ export default function ChatLog({
                     .slice()
                     .reverse()
                     .map((badge, badgeIndex) => (
-                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} />
+                      <BadgePill key={`global-${badgeIndex}`} label={badge.label} iconUrl={badge.iconUrl} title={badge.title} />
                     ))}
                 {easyMode && hints.usernameLength !== undefined && (
                   <span className={styles.usernameLength}>({hints.usernameLength}) </span>

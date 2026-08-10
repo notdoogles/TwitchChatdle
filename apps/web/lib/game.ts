@@ -51,6 +51,20 @@ export interface GuessResult {
   answerHint?: RoundHint;
 }
 
+// Composes the hover tooltip for badges whose IRC tag version carries a
+// meaningful amount: subscriber/founder versions are months (subscribed /
+// since founding), bits versions are total bits cheered. Every other badge
+// has no extra detail beyond its label.
+function badgeTooltip(slug: string, version: string): string | null {
+  if (slug === 'subscriber' || slug === 'founder') {
+    return `${version} month${version === '1' ? '' : 's'}`;
+  }
+  if (slug === 'bits') {
+    return `${version} bit${version === '1' ? '' : 's'}`;
+  }
+  return null;
+}
+
 // Resolves every classified badge in a category to its display badge
 // (label + real image, when one is available) -- unlike the old
 // single-representative-badge design, every badge a chatter has in this
@@ -62,10 +76,14 @@ async function resolveBadgeHints(
   host?: string | null
 ): Promise<BadgeHint[]> {
   return Promise.all(
-    items.map(async (item) => ({
-      label: item.label,
-      iconUrl: await resolveBadgeImageUrl(kind, item.slug, item.version, channel, host),
-    }))
+    items.map(async (item) => {
+      const detail = badgeTooltip(item.slug, item.version);
+      return {
+        label: item.label,
+        iconUrl: await resolveBadgeImageUrl(kind, item.slug, item.version, channel, host),
+        title: detail ? `${item.label} (${detail})` : null,
+      };
+    })
   );
 }
 
