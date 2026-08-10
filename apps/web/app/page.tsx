@@ -1,12 +1,13 @@
 import { cookies, headers } from 'next/headers';
 import GameBoard from '@/components/GameBoard';
 import AuthControl from '@/components/AuthControl';
-import AnnouncementModal, { ANNOUNCEMENT_COOKIE } from '@/components/AnnouncementModal';
+import AnnouncementModal from '@/components/AnnouncementModal';
 import LeaderboardsModal from '@/components/LeaderboardsModal';
 import RulesModal from '@/components/RulesModal';
 import ThemeToggle from '@/components/ThemeToggle';
 import { getChannel, getGameName, getImagesSlug, getLoserMessage, getResetHour, getResetTimezone, getWinnerGif, getWinnerMessage } from '@/lib/config';
 import { getSessionUser, SESSION_COOKIE } from '@/lib/auth';
+import { ANNOUNCEMENT_COOKIE } from '@/lib/announcement';
 import { createRound } from '@/lib/game';
 import type { InitialRound } from '@/components/roundState';
 import { resolveHost } from '@/lib/previewTenant';
