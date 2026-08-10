@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import GameBoard from '@/components/GameBoard';
 import AuthControl from '@/components/AuthControl';
+import AnnouncementModal, { ANNOUNCEMENT_COOKIE } from '@/components/AnnouncementModal';
 import LeaderboardsModal from '@/components/LeaderboardsModal';
 import RulesModal from '@/components/RulesModal';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -22,6 +23,11 @@ export default async function Home() {
   // header can show their Twitch name and the leaderboard can highlight
   // their row. Optional: guests play anonymously and simply don't appear.
   const initialUser = await getSessionUser(cookies().get(SESSION_COOKIE)?.value, host);
+
+  // One-time announcement of the Twitch login / leaderboard feature: skipped
+  // entirely once the visitor has ticked "Don't show this again" (cookie), so
+  // repeat visitors never see a flash of it before the client hydrates.
+  const announcementDismissed = cookies().get(ANNOUNCEMENT_COOKIE)?.value;
 
   // Resolve today's round server-side so the first paint shows the first
   // message instead of a loading spinner + client round trip. The pick is
@@ -79,6 +85,7 @@ export default async function Home() {
         initialRound={initialRound}
         initialError={initialError}
       />
+      {!announcementDismissed && <AnnouncementModal />}
     </main>
   );
 }
