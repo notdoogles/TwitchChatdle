@@ -69,7 +69,7 @@ export default function AnnouncementModal() {
 
         <p className={styles.intro}>
           You can now sign in with Twitch to track your scores on the leaderboard. Signing in
-          is completely optional — you only need it if you want to be included on the
+          is completely optional - you only need it if you want to be included on the
           leaderboard.
         </p>
 
