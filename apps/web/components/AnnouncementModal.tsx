@@ -1,12 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { ANNOUNCEMENT_COOKIE } from '@/lib/announcement';
 import styles from './AnnouncementModal.module.css';
-
-// Cookie that records the "don't show this again" choice. Kept here (not in a
-// lib file) because it's only ever used by this component and by page.tsx,
-// which imports the constant to skip rendering the modal on repeat visits.
-export const ANNOUNCEMENT_COOKIE = 'chatdle_announcement_dismissed';
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
