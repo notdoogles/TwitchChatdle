@@ -1,5 +1,5 @@
 // Pure header-parsing helper, safe to import from edge middleware (no `pg`
-// dependency) as well as from Node.js route handlers.
+// dependency).
 export interface RequestContext {
   address: string;
   referrer: string;

@@ -1,16 +1,12 @@
 import { NextResponse } from 'next/server';
-import { waitUntil } from '@vercel/functions';
 import { createRound } from '@/lib/game';
 import { getChannel } from '@/lib/config';
 import { resolveHost } from '@/lib/previewTenant';
-import { getRequestContext } from '@/lib/requestContext';
-import { logRequest } from '@/lib/requestLog';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   const host = resolveHost(req.headers);
-  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/new', host));
 
   const channel = getChannel(host);
   if (!channel) {

@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import { waitUntil } from '@vercel/functions';
 import { cookies } from 'next/headers';
 import { getLeaderboard, LeaderboardPeriod } from '@/lib/leaderboard';
 import { getSessionUser, SESSION_COOKIE } from '@/lib/auth';
 import { getChannel } from '@/lib/config';
 import { resolveHost } from '@/lib/previewTenant';
-import { getRequestContext } from '@/lib/requestContext';
-import { logRequest } from '@/lib/requestLog';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +13,6 @@ export const dynamic = 'force-dynamic';
 // `isYou` (resolved from the session cookie server-side).
 export async function GET(req: Request) {
   const host = resolveHost(req.headers);
-  waitUntil(logRequest(getRequestContext(req.headers), '/api/leaderboard', host));
 
   const channel = getChannel(host);
   if (!channel) {
