@@ -12,6 +12,10 @@
 export interface BadgeHint {
   label: string;
   iconUrl: string | null;
+  // The complete hover tooltip for badges whose IRC tag version carries a
+  // notable value -- e.g. "Subscriber (30 months)" or "Bits (1000 bits)".
+  // null for badges with no extra detail; ChatLog falls back to the label.
+  title: string | null;
 }
 
 export interface RoundHint {

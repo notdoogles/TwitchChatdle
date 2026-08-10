@@ -380,9 +380,9 @@ describe('submitGuess', () => {
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.hint).toBeUndefined();
     expect(result.answerHint).toEqual({
-      globalBadges: [{ label: 'Prime', iconUrl: null }],
+      globalBadges: [{ label: 'Prime', iconUrl: null, title: null }],
       color: '#FF0000',
-      channelBadges: [{ label: 'Moderator', iconUrl: null }],
+      channelBadges: [{ label: 'Moderator', iconUrl: null, title: null }],
     });
   });
 
@@ -399,7 +399,7 @@ describe('submitGuess', () => {
   it('attaches the global badge hint when advancing to round 2', async () => {
     setupSubmitGuessMocks(round, messagesById);
     const result = await submitGuess('round-1', 'bob', 0);
-    expect(result.hint).toEqual({ globalBadges: [{ label: 'Prime', iconUrl: null }] });
+    expect(result.hint).toEqual({ globalBadges: [{ label: 'Prime', iconUrl: null, title: null }] });
   });
 
   it('attaches the color hint when advancing to round 3', async () => {
@@ -411,7 +411,39 @@ describe('submitGuess', () => {
   it('attaches the channel badge hint when advancing to round 4', async () => {
     setupSubmitGuessMocks(round, messagesById);
     const result = await submitGuess('round-1', 'bob', 2);
-    expect(result.hint).toEqual({ channelBadges: [{ label: 'Moderator', iconUrl: null }] });
+    expect(result.hint).toEqual({ channelBadges: [{ label: 'Moderator', iconUrl: null, title: null }] });
+  });
+
+  it('carries the subscriber badge month count into the channel badge hint', async () => {
+    setupSubmitGuessMocks({ ...round, badges: { subscriber: '30' } }, messagesById);
+    const result = await submitGuess('round-1', 'bob', 2);
+    expect(result.hint).toEqual({
+      channelBadges: [{ label: 'Subscriber', iconUrl: null, title: 'Subscriber (30 months)' }],
+    });
+  });
+
+  it('carries the subscriber badge month count into the answer reveal', async () => {
+    setupSubmitGuessMocks({ ...round, badges: { subscriber: '30' } }, messagesById);
+    const result = await submitGuess('round-1', 'alice', 0);
+    expect(result.answerHint?.channelBadges).toEqual([
+      { label: 'Subscriber', iconUrl: null, title: 'Subscriber (30 months)' },
+    ]);
+  });
+
+  it('carries the founder badge month count into the channel badge hint, with singular pluralization', async () => {
+    setupSubmitGuessMocks({ ...round, badges: { founder: '1' } }, messagesById);
+    const result = await submitGuess('round-1', 'bob', 2);
+    expect(result.hint).toEqual({
+      channelBadges: [{ label: 'Founder', iconUrl: null, title: 'Founder (1 month)' }],
+    });
+  });
+
+  it('carries the bits badge amount into the channel badge hint', async () => {
+    setupSubmitGuessMocks({ ...round, badges: { bits: '1000' } }, messagesById);
+    const result = await submitGuess('round-1', 'bob', 2);
+    expect(result.hint).toEqual({
+      channelBadges: [{ label: 'Bits', iconUrl: null, title: 'Bits (1000 bits)' }],
+    });
   });
 
   it('attaches the username length hint when advancing to round 5', async () => {
@@ -444,9 +476,9 @@ describe('submitGuess', () => {
     expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
     expect(result.nextMessage).toBeNull();
     expect(result.answerHint).toEqual({
-      globalBadges: [{ label: 'Prime', iconUrl: null }],
+      globalBadges: [{ label: 'Prime', iconUrl: null, title: null }],
       color: '#FF0000',
-      channelBadges: [{ label: 'Moderator', iconUrl: null }],
+      channelBadges: [{ label: 'Moderator', iconUrl: null, title: null }],
     });
   });
 });
@@ -483,7 +515,7 @@ describe('skipMessage', () => {
     expect(result.allMessages).toBeUndefined();
     // A skip counts like a wrong guess: it unlocks the easy-mode hint the
     // next round would normally reveal.
-    expect(result.hint).toEqual({ globalBadges: [{ label: 'Prime', iconUrl: null }] });
+    expect(result.hint).toEqual({ globalBadges: [{ label: 'Prime', iconUrl: null, title: null }] });
   });
 
   it('reveals the cumulative easy-mode hint at the same rounds as a wrong guess', async () => {
@@ -491,7 +523,7 @@ describe('skipMessage', () => {
     const roundThree = await skipMessage('round-1', 1);
     expect(roundThree.hint).toEqual({ color: '#FF0000' });
     const roundFour = await skipMessage('round-1', 2);
-    expect(roundFour.hint).toEqual({ channelBadges: [{ label: 'Moderator', iconUrl: null }] });
+    expect(roundFour.hint).toEqual({ channelBadges: [{ label: 'Moderator', iconUrl: null, title: null }] });
   });
 
   it('ends the game as a loss when skipping the last message, revealing the answer with no easy-mode hint (same as a wrong guess at game over)', async () => {
@@ -504,9 +536,9 @@ describe('skipMessage', () => {
     expect(result.nextMessage).toBeNull();
     expect(result.hint).toBeUndefined();
     expect(result.answerHint).toEqual({
-      globalBadges: [{ label: 'Prime', iconUrl: null }],
+      globalBadges: [{ label: 'Prime', iconUrl: null, title: null }],
       color: '#FF0000',
-      channelBadges: [{ label: 'Moderator', iconUrl: null }],
+      channelBadges: [{ label: 'Moderator', iconUrl: null, title: null }],
     });
   });
 });
