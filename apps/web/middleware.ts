@@ -3,13 +3,10 @@ import type { NextRequest } from 'next/server';
 import { getRequestContext } from '@/lib/requestContext';
 import { PREVIEW_TENANT_COOKIE, PREVIEW_TENANT_HEADER } from '@/lib/previewTenant';
 
-// Lightweight request observability: this only writes to Vercel's runtime
-// logs (not persisted to the DB). Persistent logging (for longer retention)
-// happens separately in the route handlers themselves, since DB access
-// needs the Node.js runtime rather than edge middleware. Only api routes
-// are logged so static asset/page requests don't add noise -- see the
-// `matcher` below, which (unlike this check) needs to cover page routes
-// too for the preview tenant override.
+// Lightweight request observability: writes to Vercel's runtime logs only
+// (nothing persisted to the DB). Scoped to API routes so static asset/page
+// requests don't add noise -- see the `matcher` below, which (unlike this
+// check) needs to cover page routes too for the preview tenant override.
 function logApiRequest(request: NextRequest) {
   if (!request.nextUrl.pathname.startsWith('/api/')) return;
 

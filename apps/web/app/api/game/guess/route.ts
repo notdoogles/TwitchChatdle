@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
-import { waitUntil } from '@vercel/functions';
 import { cookies } from 'next/headers';
 import { submitGuess } from '@/lib/game';
 import { getSessionUser, SESSION_COOKIE } from '@/lib/auth';
 import { resolveHost } from '@/lib/previewTenant';
-import { getRequestContext } from '@/lib/requestContext';
-import { logRequest } from '@/lib/requestLog';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   const host = resolveHost(req.headers);
-  waitUntil(logRequest(getRequestContext(req.headers), '/api/game/guess', host));
 
   let body: { roundId?: string; guess?: string; guessNumber?: number };
   try {

@@ -125,19 +125,6 @@ create index if not exists idx_messages_channel_len
   on messages (channel)
   include (message_text);
 
--- Owned by apps/web. Optional request observability log for diagnosing
--- unusual traffic patterns; not required for gameplay.
-create table if not exists request_log (
-  id bigserial primary key,
-  address text,
-  path text not null,
-  referrer text,
-  user_agent text,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_request_log_created_at on request_log(created_at);
-
 -- Maps a channel name to its numeric Twitch user ID (the "room-id" IRC
 -- tag, present on every chat message tmi.js delivers -- no Twitch API
 -- credentials needed for *this* lookup). apps/web uses this to look up
@@ -191,7 +178,7 @@ async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
   console.log(
-    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, request_log, channels, sessions, game_results'
+    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, channels, sessions, game_results'
   );
   await pool.end();
 }
