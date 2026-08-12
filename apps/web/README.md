@@ -58,10 +58,13 @@ overrides the matching env vars for requests to that host:
 
 The key is the exact hostname (no protocol/port) a streamer's game will be
 served from. Every field is optional and overrides the matching env var
-only for requests to that host; anything you omit still falls back to the
-env vars/defaults. Because the whole config lives in an env var (not in
-committed source), secrets are per-tenant safe here too. The full set of
-per-tenant fields mirrors the env vars documented in `.env.example`:
+only for requests to that host; resolution is per field -- the tenant's
+value, then the universal env var, then the built-in default (e.g.
+"Chatdle"). A minimal entry like `{ "channel": "streamer1" }` is enough
+when the rest can use the shared env vars. Because the whole config lives
+in an env var (not in committed source), secrets are per-tenant safe here
+too. The full set of per-tenant fields mirrors the env vars documented in
+`.env.example`:
 `channel`, `gameName`, `winnerMessage`, `loserMessage`, `resetHour`,
 `resetTimezone`, `usernameHintsLimit`, `maxMessageLength`, `maxMessageWords`,
 `topChattersLimit`, `imagesSlug`, `adSidebarImage`, `adSidebarText`,
@@ -102,6 +105,19 @@ choice in a cookie so it also applies to the `/api/game/new` fetch the page
 makes afterwards. This override is a no-op in production
 (`VERCEL_ENV=production`), so it can never be used to change a live
 tenant's game.
+
+Two things make this work:
+
+- The hostname must be a key in `TENANTS_JSON` -- the override only changes
+  which hostname is looked up; it can't conjure a tenant that isn't
+  configured. A hostname missing from the map renders the default /
+  single-tenant game.
+- `TENANTS_JSON` is read from the environment serving the request. Vercel
+  env vars are scoped per environment (Production / Preview / Development),
+  so add `TENANTS_JSON` to the Preview (and Development, if you use it)
+  environment too, and to `.env.local` for local dev -- otherwise previews
+  fall back to the universal env vars/defaults exactly as if no tenant
+  matched.
 
 ## Deploying to Vercel
 
