@@ -317,14 +317,13 @@ interface DailyAnswerRow {
   message_text: string;
 }
 
-// Admin-only daily-answer lookup for the archive sheet (see
-// app/api/game/answer). For today it ensures the round exists the same way
-// a first visitor would (createRound -- the pick is deterministic, so the
-// sheet's fetch is indistinguishable from a player's first visit), then
-// reads the answer back from the stored row. An explicit `gameDate`
-// (YYYY-MM-DD) is a read-only backfill path for already-created past
-// rounds -- rounds only exist for days the game was actually played, so an
-// unplayed date throws.
+// Daily-answer lookup for the archive sheet (see app/api/game/answer). For
+// today it ensures the round exists the same way a first visitor would
+// (createRound -- the pick is deterministic, so the sheet's fetch is
+// indistinguishable from a player's first visit), then reads the answer
+// back from the stored row. An explicit `gameDate` (YYYY-MM-DD) is a
+// read-only backfill path for already-created past rounds -- rounds only
+// exist for days the game was actually played, so an unplayed date throws.
 export async function getDailyAnswer(
   channel: string,
   host?: string | null,
