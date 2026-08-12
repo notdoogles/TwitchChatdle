@@ -9,7 +9,7 @@ vi.mock('./db', () => {
 });
 
 import { pool } from './db';
-import { createRound, rerollRound, skipMessage, submitGuess } from './game';
+import { createRound, getDailyAnswer, rerollRound, skipMessage, submitGuess } from './game';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -114,6 +114,31 @@ function setupRerollRoundMocks(candidateRows: CandidateRow[], { existingVariant 
       return { rows: [{ message_text: messagesById.get(id) ?? null, username: usernamesById.get(id) ?? null }] };
     }
     throw new Error(`Unexpected query in rerollRound test: ${sql}`);
+  });
+}
+
+interface DailyAnswerRow {
+  game_date: string;
+  username: string;
+  message_text: string;
+}
+
+// getDailyAnswer delegates to createRound for today, so reuse its mocks and
+// layer the answer-select on top -- checked first, since the answer SQL also
+// contains the 'from game_rounds gr' / 'where gr.channel = $1' fragments
+// setupCreateRoundMocks routes on.
+function setupDailyAnswerMocks(
+  candidateRows: CandidateRow[],
+  { answerRows = [] as DailyAnswerRow[] } = {}
+) {
+  setupCreateRoundMocks(candidateRows);
+  const createRoundImpl = mockedQuery.getMockImplementation();
+  if (!createRoundImpl) throw new Error('Expected createRound mocks to be installed');
+  mockedQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+    if (sql.includes('gr.game_date::text as game_date')) {
+      return { rows: answerRows };
+    }
+    return createRoundImpl(sql, params);
   });
 }
 
@@ -322,6 +347,46 @@ describe('rerollRound', () => {
   it('throws when no chatter has enough eligible messages', async () => {
     setupRerollRoundMocks(candidatesForUser(1, 'alice', 3));
     await expect(rerollRound('somechannel')).rejects.toThrow(/enough unique, readable messages/);
+  });
+});
+
+describe('getDailyAnswer', () => {
+  const rows = [...candidatesForUser(1, 'alice', 5), ...candidatesForUser(2, 'bob', 5)];
+  const answerRows = [
+    { game_date: '2026-08-12', username: 'bob', message_text: 'this is unique chat message number 0 from bob' },
+  ];
+
+  it('ensures today\'s round exists (like a first visitor) and returns its answer', async () => {
+    setupDailyAnswerMocks(rows, { answerRows });
+    const answer = await getDailyAnswer('somechannel');
+    expect(answer).toEqual({
+      gameDate: '2026-08-12',
+      username: 'bob',
+      message: 'this is unique chat message number 0 from bob',
+    });
+    // The round was created via createRound, not merely read.
+    const candidateCall = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('with normalized as')
+    );
+    expect(candidateCall).toBeTruthy();
+  });
+
+  it('reads an already-created past round directly for an explicit date, without creating anything', async () => {
+    setupDailyAnswerMocks(rows, { answerRows });
+    const answer = await getDailyAnswer('somechannel', null, '2026-08-11');
+    expect(answer.gameDate).toBe('2026-08-12');
+    expect(answer.username).toBe('bob');
+    const candidateCall = mockedQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('with normalized as')
+    );
+    expect(candidateCall).toBeUndefined();
+  });
+
+  it('throws when no round exists for an explicit date', async () => {
+    setupDailyAnswerMocks(rows);
+    await expect(getDailyAnswer('somechannel', null, '2026-08-11')).rejects.toThrow(
+      /No round exists for 2026-08-11/
+    );
   });
 });
 
