@@ -1,7 +1,61 @@
-import { describe, expect, it } from 'vitest';
-import { getTenantOverrides, TENANTS } from './tenants';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTenantOverrides, loadTenants } from './tenants';
+
+// Tenant config comes from the TENANTS_JSON env var (or an explicit raw
+// string in tests). Seeding via loadTenants() keeps these tests hermetic --
+// no env var stubbing needed for the seed itself.
+
+const SEED = {
+  'elliebdle.doogl.es': {
+    channel: 'elliebwalker',
+    gameName: 'Elliebdle',
+    imagesSlug: 'elliebdle',
+    databaseUrl: 'postgres://ellie',
+    twitchClientId: 'tenant-client-id',
+    adminSecret: 'tenant-admin-secret',
+  },
+  'streamer1.example.com': { channel: 'streamer1' },
+  'streamer2.example.com': { channel: 'streamer2', databaseUrlEnv: 'STREAMER2_DATABASE_URL' },
+};
+
+describe('loadTenants', () => {
+  it('parses a valid tenant JSON blob', () => {
+    const tenants = loadTenants(JSON.stringify(SEED));
+    expect(tenants['elliebdle.doogl.es']).toEqual(SEED['elliebdle.doogl.es']);
+    expect(tenants['streamer1.example.com']).toEqual({ channel: 'streamer1' });
+  });
+
+  it('treats missing or empty input as an empty map', () => {
+    expect(loadTenants()).toEqual({});
+    expect(loadTenants('')).toEqual({});
+    expect(loadTenants('   ')).toEqual({});
+  });
+
+  it('falls back to an empty map on malformed JSON without throwing', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(loadTenants('{ not json')).toEqual({});
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('rejects non-object roots', () => {
+    expect(loadTenants('[1,2]')).toEqual({});
+    expect(loadTenants('null')).toEqual({});
+    expect(loadTenants('"hi"')).toEqual({});
+  });
+});
 
 describe('getTenantOverrides', () => {
+  beforeEach(() => {
+    loadTenants(JSON.stringify(SEED));
+  });
+
+  afterEach(() => {
+    loadTenants('{}');
+  });
+
   it('returns an empty object for an unrecognized or missing host', () => {
     expect(getTenantOverrides(undefined)).toEqual({});
     expect(getTenantOverrides(null)).toEqual({});
@@ -9,43 +63,10 @@ describe('getTenantOverrides', () => {
   });
 
   it('normalizes a port and casing before looking up the tenant', () => {
-    const originalKeys = Object.keys(TENANTS);
-    // Temporarily register a tenant so the lookup has something to match --
-    // TENANTS is empty by default in a single-tenant deployment.
-    TENANTS['streamer1.example.com'] = { channel: 'streamer1' };
-    try {
-      expect(getTenantOverrides('Streamer1.Example.com:3000')).toEqual({ channel: 'streamer1' });
-    } finally {
-      for (const key of Object.keys(TENANTS)) {
-        if (!originalKeys.includes(key)) delete TENANTS[key];
-      }
-    }
+    expect(getTenantOverrides('Streamer1.Example.com:3000')).toEqual({ channel: 'streamer1' });
   });
 
-  it('returns a databaseUrlEnv override when the tenant keeps its own database', () => {
-    const originalKeys = Object.keys(TENANTS);
-    TENANTS['streamer2.example.com'] = { channel: 'streamer2', databaseUrlEnv: 'STREAMER2_DATABASE_URL' };
-    try {
-      expect(getTenantOverrides('streamer2.example.com')).toEqual({
-        channel: 'streamer2',
-        databaseUrlEnv: 'STREAMER2_DATABASE_URL',
-      });
-    } finally {
-      for (const key of Object.keys(TENANTS)) {
-        if (!originalKeys.includes(key)) delete TENANTS[key];
-      }
-    }
-  });
-
-  it('resolves the committed elliebdle tenant entry', () => {
-    expect(getTenantOverrides('elliebdle.doogl.es')).toEqual({
-      channel: 'elliebwalker',
-      gameName: 'Elliebdle',
-      imagesSlug: 'elliebdle',
-      winnerGif: '/static/tenants/elliebdle/imaw.gif',
-      adSidebarImage: '/static/tenants/elliebdle/sexoura.jpg',
-      adSidebarText: 'Elliebdle is brought to you by Sexoura Ring',
-      databaseUrlEnv: 'ELLIEBDLE_DATABASE_URL',
-    });
+  it('returns the full override object for a known host', () => {
+    expect(getTenantOverrides('elliebdle.doogl.es')).toEqual(SEED['elliebdle.doogl.es']);
   });
 });

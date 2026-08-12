@@ -59,8 +59,8 @@ export async function GET(req: Request) {
   if (!stored || stored.state !== state) return home;
 
   try {
-    const { accessToken } = await exchangeCodeForToken(code, stored.verifier, `${origin}/api/auth/callback`);
-    const profile = await fetchTwitchProfile(accessToken);
+    const { accessToken } = await exchangeCodeForToken(code, stored.verifier, `${origin}/api/auth/callback`, host);
+    const profile = await fetchTwitchProfile(accessToken, host);
     const userId = await upsertTwitchUser(profile, host);
     const sessionId = await createSession(userId, host);
     home.cookies.set(SESSION_COOKIE, sessionId, {

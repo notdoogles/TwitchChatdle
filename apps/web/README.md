@@ -42,22 +42,36 @@ connection is needed.
 By default every setting comes from env vars, one streamer per deployment,
 exactly as described above. If you want to host several streamers off a
 single Vercel project/deployment instead (one shared codebase, cheaper than
-a fork or Vercel project per streamer), add entries to `lib/tenants.ts`:
+a fork or Vercel project per streamer), set a single `TENANTS_JSON` env var
+in the Vercel dashboard: a JSON object keyed by hostname, where each value
+overrides the matching env vars for requests to that host:
 
-```ts
-export const TENANTS: Record<string, TenantOverrides> = {
-  'streamer1.example.com': {
-    channel: 'streamer1',
-    gameName: 'Streamer1dle',
-    imagesSlug: 'streamer1',
-  },
-};
+```json
+{
+  "streamer1.example.com": {
+    "channel": "streamer1",
+    "gameName": "Streamer1dle",
+    "imagesSlug": "streamer1"
+  }
+}
 ```
 
 The key is the exact hostname (no protocol/port) a streamer's game will be
 served from. Every field is optional and overrides the matching env var
 only for requests to that host; anything you omit still falls back to the
-env vars/defaults. Attach each hostname as a domain on the same Vercel
+env vars/defaults. Because the whole config lives in an env var (not in
+committed source), secrets are per-tenant safe here too. The full set of
+per-tenant fields mirrors the env vars documented in `.env.example`:
+`channel`, `gameName`, `winnerMessage`, `loserMessage`, `resetHour`,
+`resetTimezone`, `usernameHintsLimit`, `maxMessageLength`, `maxMessageWords`,
+`topChattersLimit`, `imagesSlug`, `adSidebarImage`, `adSidebarText`,
+`winnerGif`, `twitchClientId`, `twitchClientSecret`, `adminSecret`, and
+`databaseUrl`.
+
+Adding a tenant is a pure config change: paste a new `"hostname": {...}`
+entry into `TENANTS_JSON` and redeploy -- no code changes. (Env var edits in
+Vercel apply to new deployments, so a config change needs a redeploy click,
+not a code push.) Attach each hostname as a domain on the same Vercel
 project (Project -> Settings -> Domains) and point its DNS at Vercel.
 
 For win/loss images, drop a tenant's files in
@@ -67,18 +81,20 @@ only used as a fallback when a tenant has no images of its own (or for the
 single-tenant/default case, where there's no tenant at all).
 
 A tenant can also keep its game data in its own Postgres database instead
-of sharing the deployment's `DATABASE_URL`: add a `databaseUrlEnv` field
-(e.g. `databaseUrlEnv: 'STREAMER1_DATABASE_URL'`) naming an env var that
-holds that tenant's connection string (see `lib/db.ts` `getPool`). Unset
-means the tenant shares the shared database.
+of sharing the deployment's `DATABASE_URL`: set `databaseUrl` to that
+tenant's connection string (see `lib/db.ts` `getPool`). The legacy
+`databaseUrlEnv` field -- the *name* of an env var holding the connection
+string -- is still honored as a fallback. Unset means the tenant shares the
+shared database.
 
-This is purely additive: if `lib/tenants.ts` has no entries (the default),
-behavior is identical to the single-tenant setup above.
+If `TENANTS_JSON` is unset, empty, or not valid JSON, the app logs a
+warning and behaves exactly like the single-tenant setup above -- a bad
+paste in the dashboard can never take the whole deployment down.
 
 ### Previewing a specific tenant
 
 Preview deployments get a `*.vercel.app` URL that won't match any hostname
-in `lib/tenants.ts`, so tenant overrides don't apply by default. On any
+in `TENANTS_JSON`, so tenant overrides don't apply by default. On any
 non-production deployment (and locally), append `?tenant=<hostname>` to the
 URL, e.g. `https://<preview>.vercel.app/?tenant=whisqeydle.doogl.es`, to
 simulate that tenant's hostname for the request. Middleware stores the
@@ -96,7 +112,9 @@ tenant's game.
    `GAME_NAME`, `WINNER_MESSAGE`, `LOSER_MESSAGE`, `RESET_HOUR`,
    `RESET_TIMEZONE`, `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`,
    `AD_SIDEBAR_IMAGE`/`AD_SIDEBAR_TEXT`, and `WINNER_GIF` (see
-   `.env.example` for defaults). If you enable SSO, register each domain on
+   `.env.example` for defaults). For multiple streamers on one deployment,
+   add `TENANTS_JSON` instead of the per-streamer values (see "Running
+   multiple streamers" above). If you enable SSO, register each domain on
    the project as a redirect URI for the Twitch app (see the SSO section
    above).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
@@ -170,14 +188,16 @@ avatars existed fall back to the username until their next login.
 the game is served on** as a redirect URI pointing at
 `https://<host>/api/auth/callback`. For this deployment that means all four
 tenant domains:
-
 - `https://elliebdle.doogl.es/api/auth/callback`
 - `https://whisqeydle.doogl.es/api/auth/callback`
 - `https://hannerdle.doogl.es/api/auth/callback`
 - `https://freezerdle.doogl.es/api/auth/callback`
 
 plus whatever domain serves the non-tenant deployment, and
-`http://localhost:3000/api/auth/callback` for local dev. A missing (or
+`http://localhost:3000/api/auth/callback` for local dev. A tenant that sets
+its own `twitchClientId`/`twitchClientSecret` in `TENANTS_JSON` uses its own
+app instead, and must register that tenant's hostnames as redirect URIs in
+*that* app. A missing (or
 path-wrong) entry makes Twitch reject the login with `redirect_mismatch`
 and bounce you to a registered URI with `?error=...` in the URL. The
 redirect URI is derived from the request origin, so no per-host config is
@@ -222,8 +242,8 @@ Set `AD_SIDEBAR_IMAGE` (and optionally `AD_SIDEBAR_TEXT`) to show a sponsor
 sidebar (`components/AdSidebar.tsx`) alongside the game on wide viewports;
 it's hidden below the mobile breakpoint. Leaving `AD_SIDEBAR_IMAGE` unset
 disables it entirely -- the page renders exactly as if the component didn't
-exist. In a multi-tenant deployment, both env vars can also be overridden
-per-tenant in `lib/tenants.ts`.
+exist. In a multi-tenant deployment, both can also be overridden per-tenant
+via `TENANTS_JSON`.
 
 Set `WINNER_GIF` to a URL to always show an extra gif on a win, layered on
 top of the randomly-picked winner image above. Unset disables it.

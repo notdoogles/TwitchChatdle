@@ -97,28 +97,31 @@ export function getMaxMessageWords(host?: string | null): number {
 }
 
 // Secret required (via the `x-admin-secret` header) to call the
-// /api/game/reroll admin endpoint. Deliberately not a tenant override --
-// tenants.ts is committed to source control, so secrets don't belong there.
-// Unset means the endpoint is unreachable (see the route handler), not
-// "open to anyone".
-export function getAdminSecret(): string | undefined {
-  return process.env.ADMIN_SECRET?.trim() || undefined;
+// /api/game/reroll admin endpoint. A tenant may set its own adminSecret in
+// TENANTS_JSON (safe now that tenant config lives in env, not source);
+// otherwise falls back to the universal ADMIN_SECRET env var. Unset means
+// the endpoint is unreachable (see the route handler), not "open to
+// anyone".
+export function getAdminSecret(host?: string | null): string | undefined {
+  return getTenantOverrides(host).adminSecret?.trim() || process.env.ADMIN_SECRET?.trim() || undefined;
 }
 
 // Twitch app credentials used only to fetch an app access token for the
 // Helix "Get Global/Channel Chat Badges" endpoints (lib/badgeImages.ts) --
 // the legacy unauthenticated badges.twitch.tv endpoint was permanently
 // shut down by Twitch in June 2023. Register a free app at
-// dev.twitch.tv/console/apps to get these. Deliberately not a tenant
-// override, same reasoning as getAdminSecret. Both unset (the default)
-// just means badge hints fall back to their plain text label instead of
-// a real image -- this is optional, not required for the game to work.
-export function getTwitchClientId(): string | undefined {
-  return process.env.TWITCH_CLIENT_ID?.trim() || undefined;
+// dev.twitch.tv/console/apps to get these. A tenant may set its own
+// twitchClientId/twitchClientSecret in TENANTS_JSON (its own Twitch app
+// must register that tenant's hostname as a redirect URI); otherwise falls
+// back to the universal env vars. Both unset (the default) just means
+// badge hints fall back to their plain text label instead of a real image
+// -- this is optional, not required for the game to work.
+export function getTwitchClientId(host?: string | null): string | undefined {
+  return getTenantOverrides(host).twitchClientId?.trim() || process.env.TWITCH_CLIENT_ID?.trim() || undefined;
 }
 
-export function getTwitchClientSecret(): string | undefined {
-  return process.env.TWITCH_CLIENT_SECRET?.trim() || undefined;
+export function getTwitchClientSecret(host?: string | null): string | undefined {
+  return getTenantOverrides(host).twitchClientSecret?.trim() || process.env.TWITCH_CLIENT_SECRET?.trim() || undefined;
 }
 
 // Caps the pool of chatters eligible to be picked as a round's answer to

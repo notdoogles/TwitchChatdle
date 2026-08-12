@@ -11,12 +11,12 @@ export const dynamic = 'force-dynamic';
 // if ADMIN_SECRET isn't set on the server, the endpoint refuses every
 // request rather than defaulting to "open".
 export async function POST(req: Request) {
-  const adminSecret = getAdminSecret();
+  const host = resolveHost(req.headers);
+  const adminSecret = getAdminSecret(host);
   if (!adminSecret || req.headers.get('x-admin-secret') !== adminSecret) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
   }
 
-  const host = resolveHost(req.headers);
   const channel = getChannel(host);
   if (!channel) {
     return NextResponse.json({ error: 'TWITCH_CHANNEL is not configured on the server.' }, { status: 500 });

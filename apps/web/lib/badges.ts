@@ -94,7 +94,7 @@ export async function classifyAllBadges(
   if (unclassified.length > 0) {
     const [liveChannelSlugs, liveGlobalSlugs] = await Promise.all([
       getChannelBadgeSlugs(channel, host),
-      getGlobalBadgeSlugs(),
+      getGlobalBadgeSlugs(host),
     ]);
     for (const slug of unclassified) {
       if (liveChannelSlugs?.has(slug)) channelSlugs.push(slug);

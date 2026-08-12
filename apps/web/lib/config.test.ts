@@ -21,13 +21,15 @@ import {
   getTopChattersLimit,
   getUsernameHintsLimit,
   getAdminSecret,
+  getTwitchClientId,
+  getTwitchClientSecret,
   getAdSidebarImage,
   getAdSidebarText,
   getWinnerGif,
   getWinnerMessage,
   slugify,
 } from './config';
-import { TENANTS } from './tenants';
+import { loadTenants } from './tenants';
 
 beforeEach(() => {
   vi.unstubAllEnvs();
@@ -35,8 +37,14 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  for (const key of Object.keys(TENANTS)) delete TENANTS[key];
+  loadTenants('{}');
 });
+
+// Seeds the tenant map (normally loaded from the TENANTS_JSON env var) for
+// a single test.
+function seedTenants(overrides: Record<string, unknown>) {
+  loadTenants(JSON.stringify(overrides));
+}
 
 describe('getGameName / getWinnerMessage / getLoserMessage', () => {
   it('fall back to defaults when unset', () => {
@@ -153,10 +161,12 @@ describe('getAdSidebarImage / getAdSidebarText', () => {
 
   it('a tenant override takes priority over the env var', () => {
     vi.stubEnv('AD_SIDEBAR_IMAGE', 'https://example.com/env-ad.png');
-    TENANTS['streamer1.example.com'] = {
-      adSidebarImage: 'https://example.com/tenant-ad.png',
-      adSidebarText: 'Tenant sponsor',
-    };
+    seedTenants({
+      'streamer1.example.com': {
+        adSidebarImage: 'https://example.com/tenant-ad.png',
+        adSidebarText: 'Tenant sponsor',
+      },
+    });
     expect(getAdSidebarImage('streamer1.example.com')).toBe('https://example.com/tenant-ad.png');
     expect(getAdSidebarText('streamer1.example.com')).toBe('Tenant sponsor');
   });
@@ -175,7 +185,7 @@ describe('getWinnerGif', () => {
 
   it('a tenant override takes priority over the env var', () => {
     vi.stubEnv('WINNER_GIF', 'https://example.com/env-win.gif');
-    TENANTS['streamer1.example.com'] = { winnerGif: 'https://example.com/tenant-win.gif' };
+    seedTenants({ 'streamer1.example.com': { winnerGif: 'https://example.com/tenant-win.gif' } });
     expect(getWinnerGif('streamer1.example.com')).toBe('https://example.com/tenant-win.gif');
   });
 });
@@ -202,7 +212,7 @@ describe('getTopChattersLimit', () => {
 
   it('a tenant override takes priority over the env var', () => {
     vi.stubEnv('TOP_CHATTERS_LIMIT', '50');
-    TENANTS['streamer1.example.com'] = { topChattersLimit: 20 };
+    seedTenants({ 'streamer1.example.com': { topChattersLimit: 20 } });
     expect(getTopChattersLimit('streamer1.example.com')).toBe(20);
   });
 });
@@ -234,7 +244,7 @@ describe('getMaxMessageLength / getMaxMessageWords', () => {
   it('a tenant override takes priority over the env var', () => {
     vi.stubEnv('MAX_MESSAGE_LENGTH', '250');
     vi.stubEnv('MAX_MESSAGE_WORDS', '30');
-    TENANTS['streamer1.example.com'] = { maxMessageLength: 800, maxMessageWords: 100 };
+    seedTenants({ 'streamer1.example.com': { maxMessageLength: 800, maxMessageWords: 100 } });
     expect(getMaxMessageLength('streamer1.example.com')).toBe(800);
     expect(getMaxMessageWords('streamer1.example.com')).toBe(100);
   });
@@ -314,14 +324,14 @@ describe('multi-tenant overrides (lib/tenants.ts)', () => {
   it('a tenant override takes priority over the matching env var', () => {
     vi.stubEnv('GAME_NAME', 'EnvName');
     vi.stubEnv('TWITCH_CHANNEL', 'env-channel');
-    TENANTS[HOSTNAME] = { gameName: 'TenantName', channel: 'tenant-channel' };
+    seedTenants({ [HOSTNAME]: { gameName: 'TenantName', channel: 'tenant-channel' } });
     expect(getGameName(HOST)).toBe('TenantName');
     expect(getChannel(HOST)).toBe('tenant-channel');
   });
 
   it('falls back to the env var / default when no tenant matches the host', () => {
     vi.stubEnv('GAME_NAME', 'EnvName');
-    TENANTS[HOSTNAME] = { gameName: 'TenantName' };
+    seedTenants({ [HOSTNAME]: { gameName: 'TenantName' } });
     expect(getGameName('unrelated-host.com')).toBe('EnvName');
     expect(getGameName(undefined)).toBe('EnvName');
   });
@@ -335,14 +345,44 @@ describe('multi-tenant overrides (lib/tenants.ts)', () => {
     vi.stubEnv('RESET_HOUR', '0');
     vi.stubEnv('RESET_TIMEZONE', 'UTC');
     vi.stubEnv('USERNAME_HINTS_LIMIT', '50');
-    TENANTS[HOSTNAME] = { resetHour: 9, resetTimezone: 'Europe/London', usernameHintsLimit: 10 };
+    seedTenants({ [HOSTNAME]: { resetHour: 9, resetTimezone: 'Europe/London', usernameHintsLimit: 10 } });
     expect(getResetHour(HOST)).toBe(9);
     expect(getResetTimezone(HOST)).toBe('Europe/London');
     expect(getUsernameHintsLimit(HOST)).toBe(10);
   });
 
   it('resolves getImagesSlug from a tenant override', () => {
-    TENANTS[HOSTNAME] = { imagesSlug: 'streamer1' };
+    seedTenants({ [HOSTNAME]: { imagesSlug: 'streamer1' } });
     expect(getImagesSlug(HOST)).toBe('streamer1');
+  });
+
+  it('resolves per-tenant Twitch credentials and admin secret, falling back to env vars', () => {
+    vi.stubEnv('TWITCH_CLIENT_ID', 'env-client-id');
+    vi.stubEnv('TWITCH_CLIENT_SECRET', 'env-client-secret');
+    vi.stubEnv('ADMIN_SECRET', 'env-secret');
+    seedTenants({
+      [HOSTNAME]: {
+        twitchClientId: 'tenant-client-id',
+        twitchClientSecret: 'tenant-client-secret',
+        adminSecret: 'tenant-secret',
+      },
+    });
+    expect(getTwitchClientId(HOST)).toBe('tenant-client-id');
+    expect(getTwitchClientSecret(HOST)).toBe('tenant-client-secret');
+    expect(getAdminSecret(HOST)).toBe('tenant-secret');
+    // A host with no tenant falls back to the universal env vars.
+    expect(getTwitchClientId('unrelated-host.com')).toBe('env-client-id');
+    expect(getTwitchClientSecret()).toBe('env-client-secret');
+    expect(getAdminSecret(undefined)).toBe('env-secret');
+  });
+
+  it('per-tenant secrets are trimmed and fall back to undefined when neither is set', () => {
+    vi.stubEnv('TWITCH_CLIENT_ID', '');
+    vi.stubEnv('TWITCH_CLIENT_SECRET', '');
+    vi.stubEnv('ADMIN_SECRET', '');
+    seedTenants({ [HOSTNAME]: { twitchClientId: '  trimmed-id  ', adminSecret: '  trimmed-secret  ' } });
+    expect(getTwitchClientId(HOST)).toBe('trimmed-id');
+    expect(getTwitchClientSecret(HOST)).toBeUndefined();
+    expect(getAdminSecret(HOST)).toBe('trimmed-secret');
   });
 });
