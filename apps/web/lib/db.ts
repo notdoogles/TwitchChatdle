@@ -7,15 +7,18 @@ declare global {
 }
 
 // Resolves the connection string a request should use: a tenant may declare
-// a `databaseUrlEnv` override (see lib/tenants.ts) naming an env var that
-// holds that tenant's own DATABASE_URL, so one deployment can serve several
-// tenants with separate Postgres databases. Everything else falls back to
-// the shared DATABASE_URL, exactly like the single-tenant behavior this
-// replaces. The override is a name, not a value: connection strings are
-// secrets and belong in env vars, not committed source.
+// a `databaseUrl` (or the legacy `databaseUrlEnv` name, see lib/tenants.ts)
+// so one deployment can serve several tenants with separate Postgres
+// databases. Everything else falls back to the shared DATABASE_URL, exactly
+// like the single-tenant behavior this replaces. Both are secrets: they
+// live in TENANTS_JSON / env vars, never in committed source.
 function resolveConnectionString(host?: string | null): string | undefined {
   if (host) {
-    const envName = getTenantOverrides(host).databaseUrlEnv;
+    const overrides = getTenantOverrides(host);
+    // A directly embedded connection string wins; the legacy databaseUrlEnv
+    // (name of an env var holding the string) is still honored.
+    if (overrides.databaseUrl) return overrides.databaseUrl;
+    const envName = overrides.databaseUrlEnv;
     if (envName && process.env[envName]) return process.env[envName];
   }
   return process.env.DATABASE_URL;

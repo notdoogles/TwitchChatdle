@@ -8,10 +8,12 @@ import { getTwitchClientId, getTwitchClientSecret } from './config';
 //
 // Twitch app credentials are shared with the badge-image lookups
 // (lib/badgeImages.ts): the same TWITCH_CLIENT_ID/TWITCH_CLIENT_SECRET app
-// does both grants. The redirect URI is derived from the request origin
+// does both grants, unless a tenant sets its own credentials in
+// TENANTS_JSON (see lib/config.ts getTwitchClientId/getTwitchClientSecret).
+// The redirect URI is derived from the request origin
 // (`<origin>/api/auth/callback`), so every hostname the app is served on --
 // each tenant domain plus localhost in dev -- must be registered as a
-// redirect URI in the Twitch dev console for that app.
+// redirect URI in the Twitch dev console for the app being used.
 
 export const SESSION_COOKIE = 'chatdle_session';
 export const PKCE_COOKIE = 'chatdle_pkce';
@@ -62,14 +64,16 @@ export function buildAuthorizeUrl(clientId: string, redirectUri: string, state: 
 }
 
 // Exchanges the one-time authorization code for an access token. Called from
-// the server (the client secret never leaves it).
+// the server (the client secret never leaves it). `host` picks the tenant's
+// own Twitch app credentials when it has any (see lib/config.ts).
 export async function exchangeCodeForToken(
   code: string,
   codeVerifier: string,
-  redirectUri: string
+  redirectUri: string,
+  host?: string | null
 ): Promise<{ accessToken: string }> {
-  const clientId = getTwitchClientId();
-  const clientSecret = getTwitchClientSecret();
+  const clientId = getTwitchClientId(host);
+  const clientSecret = getTwitchClientSecret(host);
   if (!clientId || !clientSecret) {
     throw new Error('TWITCH_CLIENT_ID/TWITCH_CLIENT_SECRET are not configured on the server.');
   }
@@ -94,9 +98,10 @@ export async function exchangeCodeForToken(
 
 // The signed-in user's Twitch profile (id/login/display_name). `id` is the
 // same numeric twitch_user_id the IRC worker keys the users table on, which
-// is what links a login to the player's existing chatter identity.
-export async function fetchTwitchProfile(accessToken: string): Promise<TwitchProfile> {
-  const clientId = getTwitchClientId();
+// is what links a login to the player's existing chatter identity. `host`
+// picks the tenant's own Twitch app credentials when it has any.
+export async function fetchTwitchProfile(accessToken: string, host?: string | null): Promise<TwitchProfile> {
+  const clientId = getTwitchClientId(host);
   if (!clientId) throw new Error('TWITCH_CLIENT_ID is not configured on the server.');
 
   const res = await fetch('https://api.twitch.tv/helix/users', {

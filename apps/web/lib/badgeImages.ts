@@ -56,10 +56,11 @@ global.channelTwitchIdCache = channelIdCache;
 // Fetches (and caches, refreshing shortly before expiry) an app access
 // token via the OAuth client-credentials grant. Returns null -- not an
 // error -- when TWITCH_CLIENT_ID/TWITCH_CLIENT_SECRET aren't configured,
-// so this whole feature is opt-in.
-async function getAppAccessToken(forceRefresh = false): Promise<string | null> {
-  const clientId = getTwitchClientId();
-  const clientSecret = getTwitchClientSecret();
+// so this whole feature is opt-in. `host` picks the tenant's own Twitch app
+// credentials when it has any (see lib/config.ts).
+async function getAppAccessToken(forceRefresh = false, host?: string | null): Promise<string | null> {
+  const clientId = getTwitchClientId(host);
+  const clientSecret = getTwitchClientSecret(host);
   if (!clientId || !clientSecret) return null;
 
   if (!forceRefresh && global.twitchAppToken && Date.now() < global.twitchAppToken.expiresAt) {
@@ -98,12 +99,12 @@ function toBadgeSets(response: HelixBadgesResponse): BadgeSets {
   return sets;
 }
 
-async function fetchBadgeSets(url: string, retryOn401 = true): Promise<BadgeSets | null> {
+async function fetchBadgeSets(url: string, retryOn401 = true, host?: string | null): Promise<BadgeSets | null> {
   const cached = displayCache.get(url);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
 
-  const token = await getAppAccessToken();
-  const clientId = getTwitchClientId();
+  const token = await getAppAccessToken(false, host);
+  const clientId = getTwitchClientId(host);
   let data: BadgeSets | null = null;
   if (token && clientId) {
     try {
@@ -113,8 +114,8 @@ async function fetchBadgeSets(url: string, retryOn401 = true): Promise<BadgeSets
       if (res.status === 401 && retryOn401) {
         // Token may have been revoked/expired early -- force one refresh
         // and retry before giving up.
-        await getAppAccessToken(true);
-        return fetchBadgeSets(url, false);
+        await getAppAccessToken(true, host);
+        return fetchBadgeSets(url, false, host);
       }
       if (res.ok) data = toBadgeSets((await res.json()) as HelixBadgesResponse);
     } catch {
@@ -166,15 +167,15 @@ async function getTwitchChannelId(channel: string, host?: string | null): Promis
 // when TWITCH_CLIENT_ID/SECRET aren't configured), so callers can tell
 // "definitely not global" apart from "couldn't check" and fall back to
 // the static list instead.
-export async function getGlobalBadgeSlugs(): Promise<Set<string> | null> {
-  const globalSets = await fetchBadgeSets(GLOBAL_BADGES_URL);
+export async function getGlobalBadgeSlugs(host?: string | null): Promise<Set<string> | null> {
+  const globalSets = await fetchBadgeSets(GLOBAL_BADGES_URL, true, host);
   return globalSets ? new Set(Object.keys(globalSets)) : null;
 }
 
 export async function getChannelBadgeSlugs(channel: string, host?: string | null): Promise<Set<string> | null> {
   const twitchChannelId = await getTwitchChannelId(channel, host);
   if (!twitchChannelId) return null;
-  const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId));
+  const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId), true, host);
   return channelSets ? new Set(Object.keys(channelSets)) : null;
 }
 
@@ -200,12 +201,12 @@ export async function resolveBadgeImageUrl(
   if (kind === 'channel') {
     const twitchChannelId = await getTwitchChannelId(channel, host);
     if (twitchChannelId) {
-      const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId));
+      const channelSets = await fetchBadgeSets(channelBadgesUrl(twitchChannelId), true, host);
       const fromChannel = bestImageUrl(channelSets?.[slug]?.[version]);
       if (fromChannel) return fromChannel;
     }
   }
 
-  const globalSets = await fetchBadgeSets(GLOBAL_BADGES_URL);
+  const globalSets = await fetchBadgeSets(GLOBAL_BADGES_URL, true, host);
   return bestImageUrl(globalSets?.[slug]?.[version]);
 }
