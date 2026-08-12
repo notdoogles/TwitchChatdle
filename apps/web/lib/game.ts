@@ -305,6 +305,51 @@ export async function rerollRound(channel: string, host?: string | null): Promis
   return buildNewRoundFromRow(row.id, gameDate, usernameHints, row.message_ids, row.max_guesses, host);
 }
 
+export interface DailyAnswer {
+  gameDate: string;
+  username: string;
+  message: string;
+}
+
+interface DailyAnswerRow {
+  game_date: string;
+  username: string;
+  message_text: string;
+}
+
+// Admin-only daily-answer lookup for the archive sheet (see
+// app/api/game/answer). For today it ensures the round exists the same way
+// a first visitor would (createRound -- the pick is deterministic, so the
+// sheet's fetch is indistinguishable from a player's first visit), then
+// reads the answer back from the stored row. An explicit `gameDate`
+// (YYYY-MM-DD) is a read-only backfill path for already-created past
+// rounds -- rounds only exist for days the game was actually played, so an
+// unplayed date throws.
+export async function getDailyAnswer(
+  channel: string,
+  host?: string | null,
+  gameDate?: string
+): Promise<DailyAnswer> {
+  const targetDate = gameDate ?? getGameDate(new Date(), host);
+  if (!gameDate) {
+    await createRound(channel, host);
+  }
+
+  const { rows } = await getPool(host).query<DailyAnswerRow>(
+    `select gr.game_date::text as game_date, u.username, m.message_text
+     from game_rounds gr
+     join users u on u.id = gr.user_id
+     join messages m on m.id = gr.message_ids[1]
+     where gr.channel = $1 and gr.game_date = $2`,
+    [channel, targetDate]
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new Error(`No round exists for ${targetDate} -- the game wasn't played that day.`);
+  }
+  return { gameDate: row.game_date, username: row.username, message: row.message_text };
+}
+
 // The RNG seed for a given day's round. `variant` 0 always reproduces the
 // exact seed string used before reroll support existed, so already-created
 // rounds don't change their answer on deploy; only variant >= 1 (from an
