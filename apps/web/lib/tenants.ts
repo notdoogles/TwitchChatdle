@@ -72,10 +72,38 @@ export interface TenantOverrides {
 // loadTenants(raw) instead of stubbing env vars.
 let tenantsCache: Record<string, TenantOverrides> | null = null;
 
+// Expected JSON type of each recognized field, used to warn (not fail) on a
+// bad paste: unknown/misnamed keys and type mismatches are silently ignored
+// by the config getters, which makes a typo'd TENANTS_JSON confusing to
+// debug -- these warnings surface it in the deployment logs instead.
+const VALID_TENANT_FIELD_TYPES: Record<string, 'string' | 'number'> = {
+  channel: 'string',
+  gameName: 'string',
+  winnerMessage: 'string',
+  loserMessage: 'string',
+  resetHour: 'number',
+  resetTimezone: 'string',
+  usernameHintsLimit: 'number',
+  maxMessageLength: 'number',
+  maxMessageWords: 'number',
+  topChattersLimit: 'number',
+  imagesSlug: 'string',
+  adSidebarImage: 'string',
+  adSidebarText: 'string',
+  winnerGif: 'string',
+  twitchClientId: 'string',
+  twitchClientSecret: 'string',
+  adminSecret: 'string',
+  databaseUrl: 'string',
+  databaseUrlEnv: 'string',
+};
+
 // Parses and caches the tenant map. `raw` defaults to the TENANTS_JSON env
 // var; passing it explicitly is for tests. Malformed JSON or a non-object
 // root is logged and treated as an empty map, so a bad paste in the Vercel
-// UI degrades to single-tenant mode instead of taking the site down.
+// UI degrades to single-tenant mode instead of taking the site down. Each
+// entry is validated against the recognized fields and warned about (never
+// failed on) so a typo'd key or wrong value type shows up in the logs.
 export function loadTenants(raw?: string): Record<string, TenantOverrides> {
   const source = raw ?? process.env.TENANTS_JSON;
   let parsed: unknown = {};
@@ -87,11 +115,29 @@ export function loadTenants(raw?: string): Record<string, TenantOverrides> {
       parsed = {};
     }
   }
-  tenantsCache =
-    parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, TenantOverrides>)
-      : {};
-  return tenantsCache;
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    tenantsCache = {};
+    return tenantsCache;
+  }
+
+  const tenants: Record<string, TenantOverrides> = {};
+  for (const [hostname, entry] of Object.entries(parsed)) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      console.warn(`[tenants] Ignoring "${hostname}": expected an object of overrides, got ${entry === null ? 'null' : typeof entry}.`);
+      continue;
+    }
+    tenants[hostname] = entry as TenantOverrides;
+    for (const [key, value] of Object.entries(entry as Record<string, unknown>)) {
+      const expected = VALID_TENANT_FIELD_TYPES[key];
+      if (!expected) {
+        console.warn(`[tenants] "${hostname}.${key}" is not a recognized tenant field (fields are camelCase, e.g. resetTimezone).`);
+      } else if (typeof value !== expected) {
+        console.warn(`[tenants] "${hostname}.${key}" should be a ${expected}, got ${typeof value} (${JSON.stringify(value)}).`);
+      }
+    }
+  }
+  tenantsCache = tenants;
+  return tenants;
 }
 
 // Hostnames may arrive with a port (e.g. "localhost:3000") or mixed case;

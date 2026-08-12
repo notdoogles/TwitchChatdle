@@ -47,6 +47,58 @@ describe('loadTenants', () => {
   });
 });
 
+describe('loadTenants validation warnings', () => {
+  // Captures console.warn without letting it pollute the test output.
+  function captureWarnings(fn: () => void): string[] {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      fn();
+      return spy.mock.calls.map((args) => String(args[0]));
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('warns about unknown / misnamed (non-camelCase) fields without dropping them from the map', () => {
+    const warnings = captureWarnings(() => {
+      const tenants = loadTenants('{"host1.example.com":{"channel":"c1","reset_timezone":"UTC","ad_sidebar_image":"/x.jpg"}}');
+      // Unknown keys are ignored by the getters but kept in the raw map.
+      expect(tenants['host1.example.com']).toEqual({ channel: 'c1', reset_timezone: 'UTC', ad_sidebar_image: '/x.jpg' });
+    });
+    expect(warnings.join('\n')).toContain('host1.example.com.reset_timezone');
+    expect(warnings.join('\n')).toContain('host1.example.com.ad_sidebar_image');
+    expect(warnings.join('\n')).not.toContain('host1.example.com.channel');
+  });
+
+  it('warns about type-mismatched fields (e.g. a string where a number is expected)', () => {
+    const warnings = captureWarnings(() => {
+      loadTenants('{"host1.example.com":{"topChattersLimit":"100","resetHour":"9"}}');
+    });
+    expect(warnings.join('\n')).toContain('host1.example.com.topChattersLimit');
+    expect(warnings.join('\n')).toContain('host1.example.com.resetHour');
+  });
+
+  it('warns about and ignores non-object entries instead of crashing later', () => {
+    const warnings = captureWarnings(() => {
+      const tenants = loadTenants('{"ok.example.com":{"channel":"c1"},"bad.example.com":null,"also-bad.example.com":"string"}');
+      expect(tenants['ok.example.com']).toEqual({ channel: 'c1' });
+      expect(tenants['bad.example.com']).toBeUndefined();
+      expect(tenants['also-bad.example.com']).toBeUndefined();
+    });
+    expect(warnings.join('\n')).toContain('bad.example.com');
+    expect(warnings.join('\n')).toContain('also-bad.example.com');
+    // A dropped entry resolves to {} via getTenantOverrides, never throws.
+    expect(getTenantOverrides('bad.example.com')).toEqual({});
+  });
+
+  it('does not warn for a fully valid config', () => {
+    const warnings = captureWarnings(() => {
+      loadTenants(JSON.stringify(SEED));
+    });
+    expect(warnings).toEqual([]);
+  });
+});
+
 describe('getTenantOverrides', () => {
   beforeEach(() => {
     loadTenants(JSON.stringify(SEED));
