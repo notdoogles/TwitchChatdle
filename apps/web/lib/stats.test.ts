@@ -8,7 +8,14 @@ vi.mock('./db', () => {
   };
 });
 
+// Badge image resolution hits the Twitch API; stub it so tests stay
+// deterministic (and fast) regardless of TWITCH_CLIENT_ID/SECRET.
+vi.mock('./badgeImages', () => ({
+  resolveBadgeImageUrl: vi.fn(async () => 'https://example.com/badge.png'),
+}));
+
 import { pool } from './db';
+import { resolveBadgeImageUrl } from './badgeImages';
 import { bucketColor, classifyBadgeSlug, emoteImageUrl, getChannelStats } from './stats';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -91,7 +98,12 @@ describe('getChannelStats', () => {
         };
       }
       if (sql.includes('group by u.id')) {
-        return { rows: [{ username: 'Alice', message_count: 30 }, { username: 'Bob', message_count: 20 }] };
+        return {
+          rows: [
+            { username: 'Alice', color: '#ff0000', message_count: 30 },
+            { username: 'Bob', color: null, message_count: 20 },
+          ],
+        };
       }
       if (sql.includes("e->>'id'")) {
         return { rows: [{ id: '25', code: 'Kappa', count: 40 }, { id: '1902', code: 'PogChamp', count: 10 }] };
@@ -112,11 +124,11 @@ describe('getChannelStats', () => {
       if (sql.includes('jsonb_each_text')) {
         return {
           rows: [
-            { slug: 'subscriber', chatter_count: 8 },
-            { slug: 'moderator', chatter_count: 2 },
-            { slug: 'partner', chatter_count: 3 },
-            { slug: 'turbo', chatter_count: 1 },
-            { slug: 'unknown_slug', chatter_count: 9 },
+            { slug: 'subscriber', version: '12', chatter_count: 8 },
+            { slug: 'moderator', version: '1', chatter_count: 2 },
+            { slug: 'partner', version: '1', chatter_count: 3 },
+            { slug: 'turbo', version: '1', chatter_count: 1 },
+            { slug: 'unknown_slug', version: '1', chatter_count: 9 },
           ],
         };
       }
@@ -133,8 +145,8 @@ describe('getChannelStats', () => {
       lastMessageAt: '2026-08-18T00:00:00Z',
     });
     expect(stats.topChatters).toEqual([
-      { username: 'Alice', messageCount: 30 },
-      { username: 'Bob', messageCount: 20 },
+      { username: 'Alice', messageCount: 30, color: '#ff0000' },
+      { username: 'Bob', messageCount: 20, color: null },
     ]);
     expect(stats.topEmotes).toEqual([
       { id: '25', code: 'Kappa', count: 40, imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' },
@@ -150,12 +162,12 @@ describe('getChannelStats', () => {
       { label: 'Blue', hex: '#2979ff', count: 4 },
     ]);
     expect(stats.topChannelBadges).toEqual([
-      { slug: 'subscriber', label: 'Subscriber', count: 8 },
-      { slug: 'moderator', label: 'Moderator', count: 2 },
+      { slug: 'subscriber', version: '12', label: 'Subscriber', count: 8, imageUrl: 'https://example.com/badge.png' },
+      { slug: 'moderator', version: '1', label: 'Moderator', count: 2, imageUrl: 'https://example.com/badge.png' },
     ]);
     expect(stats.topGlobalBadges).toEqual([
-      { slug: 'partner', label: 'Partner', count: 3 },
-      { slug: 'turbo', label: 'Turbo', count: 1 },
+      { slug: 'partner', version: '1', label: 'Partner', count: 3, imageUrl: 'https://example.com/badge.png' },
+      { slug: 'turbo', version: '1', label: 'Turbo', count: 1, imageUrl: 'https://example.com/badge.png' },
     ]);
 
     expect(mockedQuery).toHaveBeenCalledTimes(6);
@@ -167,6 +179,12 @@ describe('getChannelStats', () => {
       expect(channelFilter).toBe(true);
       expect(params).toEqual(['somechannel']);
     }
+
+    // Every classified badge resolves its image with the right kind + slug
+    // + version; the unknown slug never gets resolved.
+    expect(resolveBadgeImageUrl).toHaveBeenCalledTimes(4);
+    expect(resolveBadgeImageUrl).toHaveBeenCalledWith('channel', 'subscriber', '12', 'somechannel', undefined);
+    expect(resolveBadgeImageUrl).toHaveBeenCalledWith('global', 'partner', '1', 'somechannel', undefined);
   });
 
   it('returns empty sections when the channel has no data', async () => {

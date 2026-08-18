@@ -36,12 +36,6 @@
   margin: 0 0 4px;
 }
 
-.subtitle {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
 .error {
   width: 100%;
   max-width: 480px;
@@ -167,8 +161,8 @@
   flex-shrink: 0;
 }
 
-/* Emote grid: image + code + count, wrapping into rows. */
-.emoteList {
+/* Icon rows shared by the emote and badge lists: image + code/label + count. */
+.iconList {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -176,7 +170,7 @@
   flex-direction: column;
 }
 
-.emoteItem {
+.iconItem {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -184,18 +178,26 @@
   border-bottom: 1px solid var(--border);
 }
 
-.emoteItem:last-child {
+.iconItem:last-child {
   border-bottom: none;
 }
 
-.emoteImg {
+.iconImg {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
   object-fit: contain;
 }
 
-.emoteCode {
+/* Badge label shown when no image could be resolved. */
+.iconFallback {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.iconCode {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;

@@ -1,4 +1,5 @@
 import { CHANNEL_BADGE_LABELS, GLOBAL_BADGE_LABELS } from './badges';
+import { resolveBadgeImageUrl } from './badgeImages';
 import { getPool } from './db';
 
 // All-time chat stats for the /stats page, aggregated from the ingest
@@ -22,6 +23,10 @@ export interface ChannelOverview {
 export interface TopChatter {
   username: string;
   messageCount: number;
+  // The chatter's current chat name color (null = no custom color, Twitch
+  // renders its default). Comes from user_channel_state, the same source
+  // the in-game hints use.
+  color: string | null;
 }
 
 export interface TopEmote {
@@ -48,8 +53,13 @@ export interface ColorBucket {
 
 export interface TopBadge {
   slug: string;
+  version: string;
   label: string;
   count: number;
+  // Resolved from Twitch's Helix badge data (lib/badgeImages.ts); null
+  // when Twitch credentials aren't configured or the badge can't be
+  // found, in which case the page falls back to the label text.
+  imageUrl: string | null;
 }
 
 export interface ChannelStats {
@@ -207,11 +217,12 @@ const OVERVIEW_SQL = `select count(distinct m.id)::int as total_messages,
                       left join lateral jsonb_array_elements(coalesce(m.emotes, '[]'::jsonb)) as e(id) on true
                       where m.channel = $1`;
 
-const TOP_CHATTERS_SQL = `select coalesce(u.display_name, u.username) as username, count(*)::int as message_count
+const TOP_CHATTERS_SQL = `select coalesce(u.display_name, u.username) as username, ucs.color, count(*)::int as message_count
                           from messages m
                           join users u on u.id = m.user_id
+                          left join user_channel_state ucs on ucs.user_id = u.id and ucs.channel = m.channel
                           where m.channel = $1
-                          group by u.id, coalesce(u.display_name, u.username)
+                          group by u.id, coalesce(u.display_name, u.username), ucs.color
                           order by message_count desc, username asc
                           limit ${LIMIT}`;
 
@@ -236,20 +247,22 @@ const WORD_CLOUD_SQL = `select word, count(*)::int as count
 
 // Color/badges live on user_channel_state (one row per chatter per channel,
 // holding their most recently observed tags), so these count *chatters* per
-// color/badge rather than messages. The exact-hex grouping happens in SQL
-// and the friendly bucketing in JS (bucketColor).
+// color/badge rather than messages. Badge rows are grouped by (slug,
+// version) -- the version is part of the IRC tag (e.g. {"subscriber":"12"})
+// and different versions render different badge images. The exact-hex color
+// grouping happens in SQL and the friendly bucketing in JS (bucketColor).
 const COLORS_SQL = `select coalesce(color, '') as color, count(*)::int as chatter_count
                     from user_channel_state
                     where channel = $1
                     group by coalesce(color, '')
                     order by chatter_count desc, color asc`;
 
-const BADGES_SQL = `select b.key as slug, count(*)::int as chatter_count
+const BADGES_SQL = `select b.key as slug, b.value as version, count(*)::int as chatter_count
                     from user_channel_state ucs
                     cross join lateral jsonb_each_text(coalesce(ucs.badges, '{}'::jsonb)) as b(key, value)
                     where ucs.channel = $1
-                    group by b.key
-                    order by chatter_count desc, b.key asc`;
+                    group by b.key, b.value
+                    order by chatter_count desc, b.key asc, b.value asc`;
 
 interface OverviewRow {
   total_messages: number;
@@ -261,6 +274,7 @@ interface OverviewRow {
 
 interface TopChatterRow {
   username: string;
+  color: string | null;
   message_count: number;
 }
 
@@ -282,6 +296,7 @@ interface ColorRow {
 
 interface BadgeRow {
   slug: string;
+  version: string;
   chatter_count: number;
 }
 
@@ -313,6 +328,7 @@ export async function getChannelStats(channel: string, host?: string | null): Pr
   const topChatters: TopChatter[] = chattersRes.rows.map((r) => ({
     username: r.username,
     messageCount: r.message_count,
+    color: r.color,
   }));
 
   const topEmotes: TopEmote[] = emotesRes.rows.map((r) => ({
@@ -339,20 +355,48 @@ export async function getChannelStats(channel: string, host?: string | null): Pr
     .sort((a, b) => byCountDesc(a, b) || a.label.localeCompare(b.label))
     .slice(0, LIMIT);
 
-  // Split the raw combined badges tag into channel vs global categories.
+  // Split the raw combined badges tag into channel vs global categories,
+  // grouped by (slug, version) so each distinct badge image counts
+  // separately, then resolve each one's actual image from Twitch's Helix
+  // badge data (cached in badgeImages.ts, so this is cheap after the first
+  // request). Unclassifiable slugs are dropped, same as the game's hints.
   const channelBadges = new Map<string, TopBadge>();
   const globalBadges = new Map<string, TopBadge>();
   for (const row of badgesRes.rows) {
     const classified = classifyBadgeSlug(row.slug);
     if (!classified) continue;
     const target = classified.category === 'channel' ? channelBadges : globalBadges;
-    const existing = target.get(row.slug);
+    const existing = target.get(`${row.slug}:${row.version}`);
     if (existing) existing.count += row.chatter_count;
-    else target.set(row.slug, { slug: row.slug, label: classified.label, count: row.chatter_count });
+    else {
+      target.set(`${row.slug}:${row.version}`, {
+        slug: row.slug,
+        version: row.version,
+        label: classified.label,
+        count: row.chatter_count,
+        imageUrl: null,
+      });
+    }
   }
+
+  const resolveImages = async (
+    category: 'channel' | 'global',
+    target: Map<string, TopBadge>
+  ): Promise<TopBadge[]> =>
+    Promise.all(
+      [...target.values()].map(async (badge) => ({
+        ...badge,
+        imageUrl: await resolveBadgeImageUrl(category, badge.slug, badge.version, channel, host),
+      }))
+    );
+
   const sortBadges = (a: TopBadge, b: TopBadge) => byCountDesc(a, b) || a.label.localeCompare(b.label);
-  const topChannelBadges = [...channelBadges.values()].sort(sortBadges).slice(0, LIMIT);
-  const topGlobalBadges = [...globalBadges.values()].sort(sortBadges).slice(0, LIMIT);
+  const [channelWithImages, globalWithImages] = await Promise.all([
+    resolveImages('channel', channelBadges),
+    resolveImages('global', globalBadges),
+  ]);
+  const topChannelBadges = channelWithImages.sort(sortBadges).slice(0, LIMIT);
+  const topGlobalBadges = globalWithImages.sort(sortBadges).slice(0, LIMIT);
 
   return {
     overview,

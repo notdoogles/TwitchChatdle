@@ -38,7 +38,6 @@ export default async function StatsPage() {
           ← {gameName}
         </Link>
         <h1 className={styles.title}>Chat stats</h1>
-        <p className={styles.subtitle}>How {gameName}&apos;s chat has been talking, all-time.</p>
       </header>
 
       {error ? (
@@ -70,10 +69,26 @@ export default async function StatsPage() {
           </section>
 
           <div className={styles.grid}>
-            <RankedList title="Top chatters" items={stats.topChatters.map((c) => ({ label: c.username, value: c.messageCount, valueText: pluralize(c.messageCount, 'message') }))} />
-            <RankedList title="Name colors" items={stats.topColors.map((c) => ({ label: c.label, value: c.count, valueText: pluralize(c.count, 'chatter'), swatch: c.hex }))} />
-            <RankedList title="Channel badges" items={stats.topChannelBadges.map((b) => ({ label: b.label, value: b.count, valueText: pluralize(b.count, 'chatter') }))} />
-            <RankedList title="Global badges" items={stats.topGlobalBadges.map((b) => ({ label: b.label, value: b.count, valueText: pluralize(b.count, 'chatter') }))} />
+            <RankedList
+              title="Top chatters"
+              items={stats.topChatters.map((c) => ({
+                label: c.username,
+                color: c.color ?? undefined,
+                value: c.messageCount,
+                valueText: pluralize(c.messageCount, 'message'),
+              }))}
+            />
+            <RankedList
+              title="Name colors"
+              items={stats.topColors.map((c) => ({
+                label: c.label,
+                value: c.count,
+                valueText: pluralize(c.count, 'chatter'),
+                swatch: c.hex,
+              }))}
+            />
+            <BadgeList title="Channel badges" badges={stats.topChannelBadges} />
+            <BadgeList title="Global badges" badges={stats.topGlobalBadges} />
             <EmoteList title="Top emotes" stats={stats} />
             <WordCloud words={stats.wordCloud} />
           </div>
@@ -92,14 +107,15 @@ function pluralize(count: number, noun: string): string {
   return `${count.toLocaleString()} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-// Shared ranked list card (chatters, colors, badges). Items can carry an
-// optional color swatch rendered before the label.
+// Shared ranked list card (chatters, colors). Items can carry an optional
+// color swatch (before the label) and/or a font color for the label itself
+// -- chatters render their name in their actual chat name color.
 function RankedList({
   title,
   items,
 }: {
   title: string;
-  items: { label: string; value: number; valueText: string; swatch?: string }[];
+  items: { label: string; value: number; valueText: string; swatch?: string; color?: string }[];
 }) {
   return (
     <section className={styles.card} aria-label={title}>
@@ -114,8 +130,45 @@ function RankedList({
               {item.swatch && (
                 <span className={styles.swatch} style={{ background: item.swatch }} aria-hidden="true" />
               )}
-              <span className={styles.name}>{item.label}</span>
+              <span className={styles.name} style={item.color ? { color: item.color } : undefined}>
+                {item.label}
+              </span>
               <span className={styles.value}>{item.valueText}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+// Badges are shown as their actual badge images (resolved from Twitch's
+// Helix badge data by lib/badgeImages.ts), with the count beside each one.
+// When no image could be resolved (e.g. no Twitch credentials configured)
+// the row falls back to the badge's text label, same as the game's hints.
+function BadgeList({ title, badges }: { title: string; badges: ChannelStats['topChannelBadges'] }) {
+  return (
+    <section className={styles.card} aria-label={title}>
+      <h2 className={styles.cardTitle}>{title}</h2>
+      {badges.length === 0 ? (
+        <p className={styles.empty}>Nothing here yet.</p>
+      ) : (
+        <ol className={styles.iconList}>
+          {badges.map((badge, i) => (
+            <li key={`${badge.slug}:${badge.version}`} className={styles.iconItem}>
+              <span className={styles.rank}>{i + 1}</span>
+              {badge.imageUrl ? (
+                <img
+                  className={styles.iconImg}
+                  src={badge.imageUrl}
+                  alt={badge.label}
+                  title={`${badge.label} · ${pluralize(badge.count, 'chatter')}`}
+                  loading="lazy"
+                />
+              ) : (
+                <span className={styles.iconFallback}>{badge.label}</span>
+              )}
+              <span className={styles.value}>{pluralize(badge.count, 'chatter')}</span>
             </li>
           ))}
         </ol>
@@ -133,18 +186,18 @@ function EmoteList({ title, stats }: { title: string; stats: ChannelStats }) {
       {stats.topEmotes.length === 0 ? (
         <p className={styles.empty}>No emotes logged yet.</p>
       ) : (
-        <ul className={styles.emoteList}>
+        <ul className={styles.iconList}>
           {stats.topEmotes.map((emote, i) => (
-            <li key={emote.id} className={styles.emoteItem}>
+            <li key={emote.id} className={styles.iconItem}>
               <span className={styles.rank}>{i + 1}</span>
               <img
-                className={styles.emoteImg}
+                className={styles.iconImg}
                 src={emote.imageUrl}
                 alt={emote.code}
                 title={`${emote.code} · ${pluralize(emote.count, 'time')}`}
                 loading="lazy"
               />
-              <span className={styles.emoteCode}>{emote.code}</span>
+              <span className={styles.iconCode}>{emote.code}</span>
               <span className={styles.value}>{pluralize(emote.count, 'time')}</span>
             </li>
           ))}
