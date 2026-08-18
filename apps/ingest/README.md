@@ -39,16 +39,27 @@ Two ways, and they combine:
 
 Matching is case-insensitive. Excluded messages are simply never inserted, nothing is stored and then filtered later, so there's no trace of them in the database.
 
+## Emote capture
+
+Every message's `emotes` IRC tag is parsed (see `emotes.js`) and stored in
+a new `messages.emotes` jsonb column: an array of `{id, code}` pairs, one
+per emote occurrence in message order. `apps/web`'s `/stats` page uses it
+to rank the channel's most-used emotes without re-parsing text. The tag is
+only present on messages that actually contain emotes, so older rows (or
+any message logged before the column existed) simply have `null` and don't
+contribute to emote stats. Run `npm run migrate` after deploying this
+version to add the column.
+
 ## Running tests
 
 ```
 npm test
 ```
 
-Runs the pure filtering logic in `filters.js` (username exclusion
-matching, env/DB list merging, and the self-message/`!command` skip
-checks) using Node's built-in test runner. No Twitch or Postgres
-connection is needed.
+Runs the pure logic in `filters.js` (username exclusion matching, env/DB
+list merging, and the self-message/`!command` skip checks) and `emotes.js`
+(IRC `emotes` tag parsing) using Node's built-in test runner. No Twitch
+or Postgres connection is needed.
 
 ## Deploying as an always-on process
 
