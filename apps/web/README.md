@@ -242,6 +242,36 @@ graded, and are **trust-based**: the client reports its own guess count
 same-day farming are ignored. The leaderboard fetches fresh data every time
 the modal is opened, so it always reflects the latest solves.
 
+## Chat stats page
+
+A "Stats" link in the header opens `/stats` -- all-time chat stats for the
+channel, computed server-side straight from the ingest tables
+(`lib/stats.ts`):
+
+- **Overview** -- total messages, chatters, and emote uses logged, plus the
+  date of the first message.
+- **Top chatters** -- most active usernames by message count, each name
+  rendered in the chatter's current chat name color (from
+  `user_channel_state`, null = Twitch's default).
+- **Word cloud** -- most-used words (English stopwords excluded in the SQL;
+  pure-number and single-letter tokens dropped), sized by frequency.
+- **Top emotes** -- the most-posted emotes, ranked by the `messages.emotes`
+  jsonb column the ingest worker writes (see `apps/ingest/emotes.js`), and
+  rendered from Twitch's public emoticon CDN. Messages logged before that
+  column existed don't contribute.
+- **Name colors** -- `user_channel_state.color` grouped into broad buckets
+  (red/orange/yellow/green/teal/blue/purple/pink/white/grey/black/default)
+  by `bucketColor()` rather than exact hexes, counting chatters per bucket.
+- **Channel vs global badges** -- the raw combined `badges` tag split with
+  the same static lists `lib/badges.ts` uses, grouped by (slug, version),
+  and shown as their actual badge images resolved from Twitch's Helix badge
+  data (`lib/badgeImages.ts`, cached). Badge images fall back to the text
+  label when Twitch credentials aren't configured, and slugs Twitch shipped
+  after the static lists won't appear unless they're added there.
+
+Like the rest of the app, `/stats` is per tenant: the hostname picks the
+channel and database via `getPool(host)`.
+
 ## Win/loss images
 
 Drop image files into `public/static/winners/` and `public/static/losers/`

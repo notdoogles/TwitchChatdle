@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import tmi from 'tmi.js';
 import pg from 'pg';
 import { isExcluded, mergeExcludedUsernames, parseChannels, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
+import { parseEmotes } from './emotes.js';
 
 // .env lives at the repo root, not in this workspace, so load it explicitly
 // rather than relying on dotenv/config's cwd-relative default.
@@ -87,10 +88,10 @@ async function upsertChannelState(userId, channel, color, badges) {
   );
 }
 
-async function insertMessage(userId, channel, text) {
+async function insertMessage(userId, channel, text, emotes) {
   await pool.query(
-    `insert into messages (user_id, channel, message_text) values ($1, $2, $3)`,
-    [userId, channel, text]
+    `insert into messages (user_id, channel, message_text, emotes) values ($1, $2, $3, $4)`,
+    [userId, channel, text, emotes ? JSON.stringify(emotes) : null]
   );
 }
 
@@ -133,7 +134,7 @@ client.on('message', async (channel, tags, message, self) => {
     // them concurrently to cut per-message DB round trips from four to two.
     await Promise.all([
       upsertChannelState(userId, normalizedChannel, tags.color, tags.badges),
-      insertMessage(userId, normalizedChannel, message),
+      insertMessage(userId, normalizedChannel, message, parseEmotes(tags, message)),
       upsertChannelId(normalizedChannel, tags['room-id']),
     ]);
   } catch (err) {
