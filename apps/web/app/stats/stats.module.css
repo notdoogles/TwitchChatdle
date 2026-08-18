@@ -1,0 +1,231 @@
+/* The game page's body is overflow:hidden (see globals.css), so this page
+   is its own scroll container, same pattern as page.module.css. */
+.main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 32px;
+  gap: 20px;
+}
+
+.header {
+  width: 100%;
+  max-width: 960px;
+}
+
+.backLink {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.backLink:hover,
+.backLink:focus-visible {
+  color: var(--accent);
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.error {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.overview {
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.overviewItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.overviewValue {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.overviewLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Two-column card grid on wide screens, single column on phones. */
+.grid {
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Ranked lists shared by chatters, colors, and badges. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rank {
+  width: 20px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.value {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Emote grid: image + code + count, wrapping into rows. */
+.emoteList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.emoteItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.emoteItem:last-child {
+  border-bottom: none;
+}
+
+.emoteImg {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.emoteCode {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+/* Word cloud: words flow left-to-right, sized by frequency. */
+.cloud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 12px;
+  padding: 8px 0 4px;
+}
+
+.cloudWord {
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+@media (max-width: 600px) {
+  .main {
+    padding: 16px 12px 24px;
+    gap: 16px;
+  }
+
+  .title {
+    font-size: 22px;
+  }
+}

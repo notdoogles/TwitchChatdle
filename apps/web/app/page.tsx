@@ -1,4 +1,5 @@
 import { cookies, headers } from 'next/headers';
+import Link from 'next/link';
 import GameBoard from '@/components/GameBoard';
 import AuthControl from '@/components/AuthControl';
 import AnnouncementModal from '@/components/AnnouncementModal';
@@ -69,6 +70,9 @@ export default async function Home() {
         <div className={styles.headerRight}>
           <div className={styles.headerActions}>
             <LeaderboardsModal signedIn={!!initialUser} />
+            <Link className={styles.statsLink} href="/stats">
+              Stats
+            </Link>
             <AuthControl user={initialUser} />
           </div>
           <ThemeToggle />

@@ -11,7 +11,10 @@ import { getChannelBadgeSlugs, getGlobalBadgeSlugs } from './badgeImages';
 // change here. Used by lib/game.ts to build the easy-mode "global badges"
 // (round 2) and "channel badges" (round 4) hints -- every badge a chatter
 // has is shown, not just one representative per category.
-const CHANNEL_BADGE_LABELS: Record<string, string> = {
+// Export the label maps so lib/stats.ts can classify badges synchronously
+// (the /stats page ranks every chatter's badges at once; the async
+// classifyAllBadges Helix fallback is for the per-round hint path).
+export const CHANNEL_BADGE_LABELS: Record<string, string> = {
   broadcaster: 'Broadcaster',
   moderator: 'Moderator',
   lead_moderator: 'Lead Moderator',
@@ -25,7 +28,7 @@ const CHANNEL_BADGE_LABELS: Record<string, string> = {
   'hype-train': 'Hype Train',
 };
 
-const GLOBAL_BADGE_LABELS: Record<string, string> = {
+export const GLOBAL_BADGE_LABELS: Record<string, string> = {
   staff: 'Staff',
   admin: 'Admin',
   global_mod: 'Global Mod',
@@ -43,7 +46,7 @@ const GLOBAL_BADGE_LABELS: Record<string, string> = {
 // e.g. "lead_moderator" -> "Lead Moderator", so a badge Twitch just shipped
 // still shows *something* instead of silently disappearing while this
 // file's label maps are stale.
-function prettifySlug(slug: string): string {
+export function prettifySlug(slug: string): string {
   return slug
     .replace(/[-_]+/g, ' ')
     .trim()

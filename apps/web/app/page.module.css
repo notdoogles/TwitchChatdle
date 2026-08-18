@@ -60,6 +60,27 @@
   gap: 8px;
 }
 
+/* Ghost link button matching LeaderboardsModal's button style, linking to
+   the /stats page. */
+.statsLink {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.statsLink:hover,
+.statsLink:focus-visible {
+  border-color: var(--accent);
+}
+
 /* Phone breakpoint: 600px comfortably covers every phone (portrait and
    landscape) while staying above the 480px panel, so the panel is already
    edge-to-edge here and the extra side padding is just wasted width. */
