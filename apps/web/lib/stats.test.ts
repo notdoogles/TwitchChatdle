@@ -16,7 +16,14 @@ vi.mock('./badgeImages', () => ({
 
 import { pool } from './db';
 import { resolveBadgeImageUrl } from './badgeImages';
-import { bucketColor, classifyBadgeSlug, emoteImageUrl, getChannelStats } from './stats';
+import {
+  bucketColor,
+  classifyBadgeSlug,
+  emoteImageUrl,
+  getCachedChannelStats,
+  getChannelStats,
+  refreshChannelStats,
+} from './stats';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -204,5 +211,126 @@ describe('getChannelStats', () => {
     expect(stats.topColors).toEqual([]);
     expect(stats.topChannelBadges).toEqual([]);
     expect(stats.topGlobalBadges).toEqual([]);
+  });
+});
+
+// Stubs the six aggregation queries the same way the getChannelStats test
+// above does, so the snapshot tests can exercise the cache without running
+// real aggregations. Throws on any query outside the expected set.
+function mockAggregations() {
+  mockedQuery.mockImplementation(async (sql: string) => {
+    if (sql.includes('count(distinct m.id)')) {
+      return {
+        rows: [
+          {
+            total_messages: 100,
+            total_chatters: 20,
+            total_emote_uses: 50,
+            first_message_at: null,
+            last_message_at: null,
+          },
+        ],
+      };
+    }
+    if (sql.includes('group by u.id')) {
+      return { rows: [{ username: 'Alice', color: '#ff0000', message_count: 30 }] };
+    }
+    if (sql.includes("e->>'id'")) {
+      return { rows: [{ id: '25', code: 'Kappa', count: 40 }] };
+    }
+    if (sql.includes('regexp_split_to_table')) {
+      return { rows: [{ word: 'pog', count: 15 }] };
+    }
+    if (sql.includes('coalesce(color')) {
+      return { rows: [{ color: '#FF0000', chatter_count: 5 }] };
+    }
+    if (sql.includes('jsonb_each_text')) {
+      return { rows: [{ slug: 'subscriber', version: '12', chatter_count: 8 }] };
+    }
+    if (sql.includes('channel_stats')) {
+      return { rows: [] };
+    }
+    throw new Error(`Unexpected query in test: ${sql}`);
+  });
+}
+
+describe('getCachedChannelStats', () => {
+  it('serves a fresh snapshot with a single row read, no aggregations', async () => {
+    const snapshot = {
+      overview: { totalMessages: 42, totalChatters: 7, totalEmoteUses: 99, firstMessageAt: null, lastMessageAt: null },
+      topChatters: [{ username: 'Alice', messageCount: 10, color: null }],
+      topEmotes: [],
+      wordCloud: [],
+      topColors: [],
+      topChannelBadges: [],
+      topGlobalBadges: [],
+    };
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('channel_stats')) return { rows: [{ snapshot: JSON.stringify(snapshot) }] };
+      throw new Error(`Snapshot hit should not run aggregations: ${sql}`);
+    });
+
+    const stats = await getCachedChannelStats('somechannel');
+
+    expect(stats).toEqual(snapshot);
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+    expect(mockedQuery.mock.calls[0][1]).toEqual(['somechannel']);
+  });
+
+  it('computes live stats and stores a snapshot when none exists', async () => {
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('channel_stats')) return { rows: [] };
+      if (sql.includes('count(distinct m.id)')) {
+        return {
+          rows: [
+            {
+              total_messages: 100,
+              total_chatters: 20,
+              total_emote_uses: 50,
+              first_message_at: null,
+              last_message_at: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes('group by u.id')) {
+        return { rows: [{ username: 'Alice', color: '#ff0000', message_count: 30 }] };
+      }
+      if (sql.includes("e->>'id'")) {
+        return { rows: [{ id: '25', code: 'Kappa', count: 40 }] };
+      }
+      if (sql.includes('regexp_split_to_table')) {
+        return { rows: [{ word: 'pog', count: 15 }] };
+      }
+      if (sql.includes('coalesce(color')) {
+        return { rows: [{ color: '#FF0000', chatter_count: 5 }] };
+      }
+      if (sql.includes('jsonb_each_text')) {
+        return { rows: [{ slug: 'subscriber', version: '12', chatter_count: 8 }] };
+      }
+      throw new Error(`Unexpected query in test: ${sql}`);
+    });
+
+    const stats = await getCachedChannelStats('somechannel');
+
+    expect(stats.overview.totalMessages).toBe(100);
+
+    const writeCall = mockedQuery.mock.calls.find(([sql]) => sql.includes('insert into channel_stats'));
+    expect(writeCall).toBeDefined();
+    expect(writeCall![1][0]).toBe('somechannel');
+    expect(JSON.parse(writeCall![1][1])).toEqual(stats);
+  });
+});
+
+describe('refreshChannelStats', () => {
+  it('recomputes and overwrites the snapshot unconditionally', async () => {
+    mockAggregations();
+
+    const stats = await refreshChannelStats('somechannel');
+
+    expect(stats.overview.totalChatters).toBe(20);
+    const writeCall = mockedQuery.mock.calls.find(([sql]) => sql.includes('insert into channel_stats'));
+    expect(writeCall).toBeDefined();
+    expect(JSON.parse(writeCall![1][1])).toEqual(stats);
   });
 });

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { getChannel, getGameName } from '@/lib/config';
 import { resolveHost } from '@/lib/previewTenant';
-import { getChannelStats, type ChannelStats } from '@/lib/stats';
+import { getCachedChannelStats, type ChannelStats } from '@/lib/stats';
 import styles from './stats.module.css';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -11,9 +11,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: `${gameName} stats` };
 }
 
-// All-time chat stats for the channel, computed server-side straight from
-// the ingest DB (see lib/stats.ts for the queries). Everything is per
-// tenant: the hostname picks the channel and database, same as the game.
+// All-time chat stats for the channel, served from the channel_stats
+// snapshot table (recomputed nightly by the /api/cron/daily maintenance
+// cron; recomputed lazily on first read when no snapshot exists yet) so a
+// visit doesn't re-run six full-table aggregation queries over the ingest
+// DB. Everything is per tenant: the hostname picks the channel and database,
+// same as the game.
 export default async function StatsPage() {
   const host = resolveHost(headers());
   const channel = getChannel(host);
@@ -23,7 +26,7 @@ export default async function StatsPage() {
   let error: string | null = null;
   if (channel) {
     try {
-      stats = await getChannelStats(channel, host);
+      stats = await getCachedChannelStats(channel, host);
     } catch (err) {
       error = err instanceof Error ? err.message : "Couldn't load chat stats.";
     }

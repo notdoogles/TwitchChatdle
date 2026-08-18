@@ -71,7 +71,7 @@ create table if not exists messages (
 create index if not exists idx_messages_channel on messages(channel);
 create index if not exists idx_messages_user_id on messages(user_id);
 
--- Emotes used in the message, captured from the IRC `emotes` tag (the tag
+-- Emotes used in the message, captured from the IRC \`emotes\` tag (the tag
 -- is only present when a message contains at least one emote, and tmi.js
 -- has already parsed it into emote-id -> character ranges; see
 -- apps/ingest/emotes.js). Stored as an array of {id, code} -- one entry per
@@ -182,13 +182,24 @@ create unique index if not exists idx_game_results_user_channel_date
   on game_results(user_id, channel, game_date);
 create index if not exists idx_game_results_channel_date
   on game_results(channel, game_date);
+
+-- Owned by apps/web. All-time chat stats snapshot for the /stats page
+-- (lib/stats.ts): the page reads this single row instead of re-running six
+-- full-table aggregation queries over \`messages\` on every visit. Refreshed
+-- nightly by the /api/cron/daily maintenance cron, and lazily on first read
+-- when no fresh snapshot exists yet.
+create table if not exists channel_stats (
+  channel text primary key,
+  snapshot jsonb not null,
+  computed_at timestamptz not null default now()
+);
 `;
 
 async function main() {
   console.log('Running migration...');
   await pool.query(SQL);
   console.log(
-    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, channels, sessions, game_results'
+    'Done. Tables ready: users, user_channel_state, messages, excluded_users, game_rounds, channels, sessions, game_results, channel_stats'
   );
   await pool.end();
 }

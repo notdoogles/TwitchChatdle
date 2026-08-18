@@ -43,17 +43,21 @@ TwitchChatdle/
 They're split into two apps because they have different hosting needs:
 
 - **`apps/web`** is a normal Next.js app, it only *reads* chat history
-  (plus a small `game_rounds` table it owns) and can run anywhere Next.js
-  runs, including serverless platforms like Vercel.
+  (plus a few small tables it owns: `game_rounds`, `sessions`,
+  `game_results`, and the `channel_stats` snapshots for `/stats`) and can
+  run anywhere Next.js runs, including serverless platforms like Vercel.
 - **`apps/ingest`** has to stay connected to Twitch chat continuously to
   log messages as they happen, so it needs an always-on process. It is
   **not** serverless-compatible and won't work on Vercel.
 
 Both apps talk to the same Postgres database: `apps/ingest`'s migration
-creates all four tables (`users`, `messages`, `excluded_users`, and
-`game_rounds`), `ingest` populates `users`/`messages` (and lets you exclude
-bots/usernames from being logged at all), and `web` reads from those
-tables and writes to `game_rounds` to track each day's answer.
+creates all of the tables (`users`, `user_channel_state`, `messages`,
+`excluded_users`, `game_rounds`, `channels`, `sessions`, `game_results`,
+and `channel_stats`), `ingest` populates `users`/`messages` (and lets you
+exclude bots/usernames from being logged at all), and `web` reads from
+those tables and writes to its own (`game_rounds` for each day's answer,
+`game_results` for leaderboards, `channel_stats` for the `/stats` page's
+cached snapshots).
 
 See [`apps/web/README.md`](apps/web/README.md) and
 [`apps/ingest/README.md`](apps/ingest/README.md) for full setup
@@ -139,7 +143,11 @@ requirement, it's just what's convenient for me as I already have a server to ru
 and the app can easily be run on the free tiers of Vercel and Supabase:
 
 - `apps/web` is a standard Next.js app and can be deployed anywhere Next.js
-  is supported (Vercel, a Node server, Docker, etc.).
+  is supported (Vercel, a Node server, Docker, etc.). On Vercel a daily
+  cron pre-creates each channel's round and refreshes the `/stats`
+  snapshots before players arrive (see `apps/web/README.md` ->
+  "Daily maintenance cron"); a free Upstash Redis database is optional and
+  only serves as a shared badge cache.
 - Any managed or self-hosted Postgres works (Supabase, Neon, RDS, a VM
   running Postgres, ...). `apps/web` and `apps/ingest` only need a
   `DATABASE_URL` connection string.

@@ -20,9 +20,20 @@ the default for a single-streamer fork and needs no changes.
 ```
 npm install
 cp .env.example .env   # fill in TWITCH_CHANNEL and DATABASE_URL
-npm run migrate        # creates users, messages, excluded_users, game_rounds tables
+npm run migrate        # creates users, user_channel_state, messages, excluded_users, game_rounds, channels, sessions, game_results, channel_stats
 npm start               # connects and starts logging
 ```
+
+## Write batching
+
+Incoming messages aren't written to Postgres one at a time: the worker
+queues them and flushes every ~1.5s (or once 200 queue up) as a few
+multi-row statements -- one batched user upsert, one batched message
+insert, one batched channel-state upsert. A channel averaging 10 msg/s
+drops from ~20 DB round trips/s to ~3, so the worker stays ahead of busy
+chat without hammering the database the game reads from. A failed flush is
+logged and that batch is dropped (same as a per-message insert failure
+before); the stream keeps flowing.
 
 ## Excluding usernames
 

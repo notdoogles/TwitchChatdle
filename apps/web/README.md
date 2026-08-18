@@ -124,15 +124,18 @@ Two things make this work:
 1. Push this folder to a GitHub repo, import it in Vercel.
 2. In the Vercel project settings, add env vars: `DATABASE_URL`,
    `TWITCH_CHANNEL`, `TWITCH_CLIENT_ID`/`TWITCH_CLIENT_SECRET` (needed for
-   the "Sign in with Twitch" SSO and badge images), and optionally
-   `GAME_NAME`, `WINNER_MESSAGE`, `LOSER_MESSAGE`, `RESET_HOUR`,
+   the "Sign in with Twitch" SSO and badge images), `CRON_SECRET` (enables
+   the daily maintenance cron, see below), and optionally `GAME_NAME`,
+   `WINNER_MESSAGE`, `LOSER_MESSAGE`, `RESET_HOUR`,
    `RESET_TIMEZONE`, `USERNAME_HINTS_LIMIT`, `TOP_CHATTERS_LIMIT`,
-   `AD_SIDEBAR_IMAGE`/`AD_SIDEBAR_TEXT`, and `WINNER_GIF` (see
-   `.env.example` for defaults). For multiple streamers on one deployment,
-   add `TENANTS_JSON` instead of the per-streamer values (see "Running
-   multiple streamers" above). If you enable SSO, register each domain on
-   the project as a redirect URI for the Twitch app (see the SSO section
-   above).
+   `AD_SIDEBAR_IMAGE`/`AD_SIDEBAR_TEXT`, `WINNER_GIF`, and
+   `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (a free Upstash
+   Redis database -- formerly Vercel KV -- that cold serverless instances
+   use as a shared badge cache, see `lib/badgeImages.ts`). For multiple
+   streamers on one deployment, add `TENANTS_JSON` instead of the
+   per-streamer values (see "Running multiple streamers" above). If you
+   enable SSO, register each domain on the project as a redirect URI for
+   the Twitch app (see the SSO section above).
 3. If your Postgres provider is Supabase, use the **Transaction pooler**
    connection string (port `6543`), not the direct connection -- Vercel's
    serverless functions open a lot of short-lived connections and the
@@ -269,8 +272,40 @@ channel, computed server-side straight from the ingest tables
   label when Twitch credentials aren't configured, and slugs Twitch shipped
   after the static lists won't appear unless they're added there.
 
+All-time stats only change as fast as chat arrives, so the page doesn't
+re-run its six full-table aggregation queries on every visit: results are
+snapshotted into a `channel_stats` table (one JSON row per channel, created
+by `apps/ingest`'s migration). A visit reads that single row when it's
+fresh (12-hour TTL); on the first visit ever it computes live and stores
+the result, so the page works even before any cron has run.
+
 Like the rest of the app, `/stats` is per tenant: the hostname picks the
 channel and database via `getPool(host)`.
+
+## Daily maintenance cron
+
+Two once-per-day costs are moved off the request path entirely by a daily
+cron hitting `GET /api/cron/daily` (wired up as a Vercel Cron Job in
+`vercel.json`, scheduled 05:00 UTC by default):
+
+1. **Pre-creates today's round** for every channel the deployment serves
+   (the single-tenant default plus each tenant). Round creation is the only
+   request that scans the channel's whole message history
+   (`fetchCandidateMessages` in `lib/game.ts`); running it before players
+   arrive means the first visitor of the day gets the already-stored round
+   instead of that slow query. `createRound` is idempotent (`on conflict do
+   nothing`), and if a tenant's reset time doesn't line up with the cron
+   time, the first visitor simply creates the round as before -- the cron
+   is an optimization, never a correctness dependency.
+2. **Refreshes the `/stats` snapshot** for every channel (`channel_stats`),
+   so the page stays a single-row read even for channels nobody visited yet.
+
+The endpoint is guarded by `CRON_SECRET` (Vercel Cron Jobs automatically
+send `Authorization: Bearer <CRON_SECRET>`). If `CRON_SECRET` isn't set the
+endpoint refuses every request -- it is never "open" by default. Any other
+cron can hit the same URL with the same header if you'd rather run it from
+your own host (e.g. aligned to your channel's reset time instead of the
+Vercel schedule).
 
 ## Win/loss images
 
