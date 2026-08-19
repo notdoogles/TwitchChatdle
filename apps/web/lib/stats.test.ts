@@ -265,6 +265,30 @@ describe('getCachedChannelStats', () => {
       topChannelBadges: [],
       topGlobalBadges: [],
     };
+    // node-postgres parses jsonb into a plain object, so the row arrives
+    // pre-parsed (matching the live database), not as a JSON string.
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('channel_stats')) return { rows: [{ snapshot }] };
+      throw new Error(`Snapshot hit should not run aggregations: ${sql}`);
+    });
+
+    const stats = await getCachedChannelStats('somechannel');
+
+    expect(stats).toEqual(snapshot);
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+    expect(mockedQuery.mock.calls[0][1]).toEqual(['somechannel']);
+  });
+
+  it('handles a snapshot stored as a JSON string (drivers that do not parse jsonb)', async () => {
+    const snapshot = {
+      overview: { totalMessages: 1, totalChatters: 1, totalEmoteUses: 0, firstMessageAt: null, lastMessageAt: null },
+      topChatters: [],
+      topEmotes: [],
+      wordCloud: [],
+      topColors: [],
+      topChannelBadges: [],
+      topGlobalBadges: [],
+    };
     mockedQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('channel_stats')) return { rows: [{ snapshot: JSON.stringify(snapshot) }] };
       throw new Error(`Snapshot hit should not run aggregations: ${sql}`);
@@ -274,7 +298,6 @@ describe('getCachedChannelStats', () => {
 
     expect(stats).toEqual(snapshot);
     expect(mockedQuery).toHaveBeenCalledTimes(1);
-    expect(mockedQuery.mock.calls[0][1]).toEqual(['somechannel']);
   });
 
   it('computes live stats and stores a snapshot when none exists', async () => {

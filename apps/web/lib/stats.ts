@@ -434,7 +434,10 @@ const SNAPSHOT_UPSERT_SQL = `insert into channel_stats (channel, snapshot, compu
                                set snapshot = excluded.snapshot, computed_at = excluded.computed_at`;
 
 interface SnapshotRow {
-  snapshot: string;
+  // node-postgres parses jsonb columns into plain objects automatically, so
+  // `snapshot` arrives as an object from the live database (the string case
+  // is only hit by tests/drivers that don't).
+  snapshot: string | ChannelStats;
 }
 
 export async function readChannelStatsSnapshot(
@@ -444,7 +447,7 @@ export async function readChannelStatsSnapshot(
   const { rows } = await getPool(host).query<SnapshotRow>(SNAPSHOT_READ_SQL, [channel]);
   const row = rows[0];
   if (!row) return null;
-  return JSON.parse(row.snapshot) as ChannelStats;
+  return typeof row.snapshot === 'string' ? (JSON.parse(row.snapshot) as ChannelStats) : row.snapshot;
 }
 
 export async function writeChannelStatsSnapshot(
