@@ -408,3 +408,69 @@ export async function getChannelStats(channel: string, host?: string | null): Pr
     topGlobalBadges,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Snapshot caching
+// ---------------------------------------------------------------------------
+
+// All-time stats only change as fast as chat arrives, so /stats can serve a
+// periodically recomputed snapshot instead of re-running six full-table
+// aggregations per visit (a scan of the whole `messages` table per query).
+// The daily maintenance cron (app/api/cron/daily) refreshes each channel's
+// snapshot via refreshChannelStats; readers use getCachedChannelStats, which
+// serves the snapshot when it's fresh and otherwise falls back to computing
+// live and storing the result -- so the page is fast even before the first
+// cron run, and self-heals if the cron ever stops.
+const SNAPSHOT_TTL_HOURS = 12;
+
+const SNAPSHOT_READ_SQL = `select snapshot
+                           from channel_stats
+                           where channel = $1
+                             and computed_at > now() - interval '${SNAPSHOT_TTL_HOURS} hours'`;
+
+const SNAPSHOT_UPSERT_SQL = `insert into channel_stats (channel, snapshot, computed_at)
+                             values ($1, $2::jsonb, now())
+                             on conflict (channel) do update
+                               set snapshot = excluded.snapshot, computed_at = excluded.computed_at`;
+
+interface SnapshotRow {
+  snapshot: string;
+}
+
+export async function readChannelStatsSnapshot(
+  channel: string,
+  host?: string | null
+): Promise<ChannelStats | null> {
+  const { rows } = await getPool(host).query<SnapshotRow>(SNAPSHOT_READ_SQL, [channel]);
+  const row = rows[0];
+  if (!row) return null;
+  return JSON.parse(row.snapshot) as ChannelStats;
+}
+
+export async function writeChannelStatsSnapshot(
+  channel: string,
+  stats: ChannelStats,
+  host?: string | null
+): Promise<void> {
+  await getPool(host).query(SNAPSHOT_UPSERT_SQL, [channel, JSON.stringify(stats)]);
+}
+
+// Reads the channel's snapshot when one is fresh enough; otherwise
+// recomputes the all-time stats and stores them, so the next visit is a
+// single-row read regardless of whether the maintenance cron has run.
+export async function getCachedChannelStats(channel: string, host?: string | null): Promise<ChannelStats> {
+  const snapshot = await readChannelStatsSnapshot(channel, host);
+  if (snapshot) return snapshot;
+
+  const stats = await getChannelStats(channel, host);
+  await writeChannelStatsSnapshot(channel, stats, host);
+  return stats;
+}
+
+// Cron path: recompute and store the snapshot unconditionally, so the page's
+// reads always hit a fresh snapshot even for a channel nobody visited yet.
+export async function refreshChannelStats(channel: string, host?: string | null): Promise<ChannelStats> {
+  const stats = await getChannelStats(channel, host);
+  await writeChannelStatsSnapshot(channel, stats, host);
+  return stats;
+}

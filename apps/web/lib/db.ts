@@ -11,8 +11,10 @@ declare global {
 // so one deployment can serve several tenants with separate Postgres
 // databases. Everything else falls back to the shared DATABASE_URL, exactly
 // like the single-tenant behavior this replaces. Both are secrets: they
-// live in TENANTS_JSON / env vars, never in committed source.
-function resolveConnectionString(host?: string | null): string | undefined {
+// live in TENANTS_JSON / env vars, never in committed source. Exported so
+// the maintenance cron can tell which (database, channel) pairs are actually
+// distinct (see app/api/cron/daily).
+export function getConnectionString(host?: string | null): string | undefined {
   if (host) {
     const overrides = getTenantOverrides(host);
     // A directly embedded connection string wins; the legacy databaseUrlEnv
@@ -31,7 +33,7 @@ function resolveConnectionString(host?: string | null): string | undefined {
 // lib/previewTenant.ts resolveHost) so a tenant with its own database gets
 // its own pool; omit it for the shared deployment database.
 export function getPool(host?: string | null): Pool {
-  const connectionString = resolveConnectionString(host);
+  const connectionString = getConnectionString(host);
   const key = connectionString ?? '';
   global.pgPools ??= {};
   if (!global.pgPools[key]) {

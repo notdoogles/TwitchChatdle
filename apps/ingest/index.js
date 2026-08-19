@@ -72,74 +72,160 @@ async function upsertUser(twitchUserId, username, displayName) {
   return res.rows[0].id;
 }
 
-// Color/badges are scoped per (channel, user) rather than stored globally
-// on `users` -- a chatter's badges (mod/VIP/subscriber) and even their
-// display color are specific to their relationship with *this* channel,
-// and TWITCH_CHANNELS lets one worker log several channels into the same
-// users table, so a global snapshot would leak one channel's badges into
-// another's game.
-async function upsertChannelState(userId, channel, color, badges) {
-  await pool.query(
-    `insert into user_channel_state (user_id, channel, color, badges, updated_at)
-     values ($1, $2, $3, $4, now())
-     on conflict (user_id, channel)
-     do update set color = excluded.color, badges = excluded.badges, updated_at = excluded.updated_at`,
-    [userId, channel, color || null, JSON.stringify(badges ?? {})]
-  );
-}
-
-async function insertMessage(userId, channel, text, emotes) {
-  await pool.query(
-    `insert into messages (user_id, channel, message_text, emotes) values ($1, $2, $3, $4)`,
-    [userId, channel, text, emotes ? JSON.stringify(emotes) : null]
-  );
-}
-
 // The `room-id` IRC tag (the channel's numeric Twitch user ID) is present
 // on every PRIVMSG tmi.js delivers, so no separate roomstate lookup or
 // Twitch API credentials are needed. A channel's ID never changes once
-// recorded, so this in-memory set skips the upsert after the first
-// message per channel per process lifetime, instead of hitting the DB on
-// every single chat message.
+// recorded, so this in-memory set skips the insert after the first message
+// per channel per process lifetime, instead of hitting the DB on every
+// single chat message.
 const channelsWithKnownId = new Set();
 
-async function upsertChannelId(channel, twitchChannelId) {
-  if (!twitchChannelId || channelsWithKnownId.has(channel)) return;
-  await pool.query(
-    `insert into channels (channel, twitch_channel_id)
-     values ($1, $2)
-     on conflict (channel) do nothing`,
-    [channel, twitchChannelId]
-  );
-  channelsWithKnownId.add(channel);
+// ---------------------------------------------------------------------------
+// Write batching
+// ---------------------------------------------------------------------------
+
+// Chat can arrive much faster than per-message DB round trips keep up with
+// (each message would otherwise cost two round trips: a user upsert, then
+// the three writes below in parallel). Instead, incoming messages are queued
+// and flushed every FLUSH_INTERVAL_MS -- or once FLUSH_MAX_MESSAGES pile up
+// -- as a handful of multi-row statements: one user upsert, one message
+// insert, one channel-state upsert, and (rarely, once per channel) a
+// channel-id insert. A channel averaging 10 msg/s drops from ~20 queries/s
+// to ~3. A flush failure is logged and that batch is dropped, exactly like
+// a per-message insert failure was before -- the stream keeps flowing.
+const FLUSH_INTERVAL_MS = 1_500;
+const FLUSH_MAX_MESSAGES = 200;
+
+let pending = [];
+let flushing = false;
+
+function enqueueMessage(message) {
+  pending.push(message);
+  if (pending.length >= FLUSH_MAX_MESSAGES) void flush();
 }
+
+async function flush() {
+  if (flushing) return;
+  const batch = pending;
+  if (batch.length === 0) return;
+  pending = [];
+  flushing = true;
+  try {
+    // Distinct users in this batch (keyed by twitch_user_id) are upserted in
+    // one statement; the returned ids map back to each queued message.
+    const userIdByTwitchId = new Map();
+    const userRows = [];
+    for (const m of batch) {
+      if (m.twitchUserId == null || userIdByTwitchId.has(m.twitchUserId)) continue;
+      userIdByTwitchId.set(m.twitchUserId, null);
+      userRows.push(m);
+    }
+    if (userRows.length > 0) {
+      const res = await pool.query(
+        `insert into users (twitch_user_id, username, display_name)
+         select * from unnest($1::text[], $2::text[], $3::text[])
+         on conflict (twitch_user_id)
+         do update set username = excluded.username, display_name = excluded.display_name
+         returning id, twitch_user_id`,
+        [userRows.map((m) => m.twitchUserId), userRows.map((m) => m.username), userRows.map((m) => m.displayName)]
+      );
+      for (const row of res.rows) userIdByTwitchId.set(row.twitch_user_id, row.id);
+    }
+
+    const messageUserIds = [];
+    const messageChannels = [];
+    const messageTexts = [];
+    const messageEmotes = [];
+    const stateUserIds = [];
+    const stateChannels = [];
+    const colors = [];
+    const badges = [];
+    const channelIdRows = [];
+
+    for (const m of batch) {
+      let userId = m.twitchUserId != null ? userIdByTwitchId.get(m.twitchUserId) : undefined;
+      if (userId == null) {
+        // Rare path: no user-id tag (tmi.js virtually always includes one).
+        // Insert the user row individually, as before batching.
+        userId = await upsertUser(m.twitchUserId ?? null, m.username, m.displayName);
+      }
+      messageUserIds.push(userId);
+      messageChannels.push(m.channel);
+      messageTexts.push(m.text);
+      messageEmotes.push(m.emotes ? JSON.stringify(m.emotes) : null);
+      stateUserIds.push(userId);
+      stateChannels.push(m.channel);
+      colors.push(m.color || null);
+      badges.push(JSON.stringify(m.badges ?? {}));
+      if (m.roomId && !channelsWithKnownId.has(m.channel)) channelIdRows.push([m.channel, m.roomId]);
+    }
+
+    await Promise.all([
+      pool.query(
+        `insert into messages (user_id, channel, message_text, emotes)
+         select user_id, channel, message_text, emotes::jsonb
+         from unnest($1::int[], $2::text[], $3::text[], $4::text[])
+              as u(user_id, channel, message_text, emotes)`,
+        [messageUserIds, messageChannels, messageTexts, messageEmotes]
+      ),
+      pool.query(
+        `insert into user_channel_state (user_id, channel, color, badges, updated_at)
+         select user_id, channel, color, badges::jsonb, now()
+         from unnest($1::int[], $2::text[], $3::text[], $4::text[])
+              as u(user_id, channel, color, badges)
+         on conflict (user_id, channel)
+         do update set color = excluded.color, badges = excluded.badges, updated_at = excluded.updated_at`,
+        [stateUserIds, stateChannels, colors, badges]
+      ),
+      channelIdRows.length > 0
+        ? pool.query(
+            `insert into channels (channel, twitch_channel_id)
+             select * from unnest($1::text[], $2::text[])
+             on conflict (channel) do nothing`,
+            [channelIdRows.map((r) => r[0]), channelIdRows.map((r) => r[1])]
+          )
+        : Promise.resolve(),
+    ]);
+
+    // The channel-id insert only succeeds once per channel per process
+    // lifetime (see channelsWithKnownId below); mark them known only after
+    // the insert actually succeeded.
+    for (const [channel] of channelIdRows) channelsWithKnownId.add(channel);
+  } catch (err) {
+    console.error('Failed to flush batched chat writes:', err instanceof Error ? err.message : err);
+  } finally {
+    flushing = false;
+  }
+}
+
+setInterval(flush, FLUSH_INTERVAL_MS);
 
 const client = new tmi.Client({
   connection: { reconnect: true, secure: true },
   channels: CHANNELS,
 });
 
-client.on('message', async (channel, tags, message, self) => {
+client.on('message', (channel, tags, message, self) => {
   const username = tags.username;
   if (shouldSkipMessage({ self, message, skipCommands: SKIP_COMMANDS })) return;
   if (!username) return;
 
   if (isExcluded(username, excludedUsernames)) return;
 
-  try {
-    const normalizedChannel = channel.replace('#', '');
-    const userId = await upsertUser(tags['user-id'], username, tags['display-name'] ?? username);
-    // Only the user upsert must finish first (the message insert needs its
-    // id); the remaining three writes are independent of each other, so run
-    // them concurrently to cut per-message DB round trips from four to two.
-    await Promise.all([
-      upsertChannelState(userId, normalizedChannel, tags.color, tags.badges),
-      insertMessage(userId, normalizedChannel, message, parseEmotes(tags, message)),
-      upsertChannelId(normalizedChannel, tags['room-id']),
-    ]);
-  } catch (err) {
-    console.error('Failed to log message:', err.message);
-  }
+  // No awaits here: writes are queued and flushed in batches (see the
+  // batching section above) so per-message work stays O(1) even during chat
+  // bursts. parseEmotes is pure CPU, so it can run synchronously.
+  enqueueMessage({
+    twitchUserId: tags['user-id'],
+    username,
+    displayName: tags['display-name'] ?? username,
+    channel: channel.replace('#', ''),
+    color: tags.color,
+    badges: tags.badges,
+    text: message,
+    emotes: parseEmotes(tags, message),
+    roomId: tags['room-id'],
+  });
 });
 
 client.on('connected', (addr, port) => {
@@ -159,6 +245,9 @@ main().catch((err) => {
 
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
+  // Drain whatever is still queued before dropping the connections, so a
+  // restart doesn't lose the last couple of seconds of chat.
+  await flush();
   await client.disconnect();
   await pool.end();
   process.exit(0);

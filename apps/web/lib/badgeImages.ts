@@ -1,6 +1,76 @@
 import { getPool } from './db';
 import { getTwitchClientId, getTwitchClientSecret } from './config';
 
+// ---------------------------------------------------------------------------
+// Shared cache layer (Upstash Redis REST / Vercel KV)
+// ---------------------------------------------------------------------------
+
+// Badge sets and channel-id lookups are cached in memory per serverless
+// instance (see below), but a cold instance starts with an empty cache --
+// every cold start would refetch the same Helix data. When a Redis store is
+// configured, the in-memory caches are backstopped by it so cold instances
+// load the shared values instead of hitting Twitch again.
+//
+// Any Upstash Redis database works (create one free at upstash.com, or via
+// the Vercel Marketplace / integrations -- Vercel's old "KV" product was
+// migrated into Upstash Redis). Credentials are read from either the legacy
+// Vercel KV env vars or the current Upstash ones, whichever are set:
+//
+//   KV_REST_API_URL / KV_REST_API_TOKEN            (legacy Vercel KV)
+//   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (current Upstash)
+//
+// The client is a tiny fetch wrapper over Upstash's REST API (GET /get/<key>
+// and POST /set/<key>?EX=<seconds> with the value as the body) -- no npm
+// dependency, works on any host. Without credentials the caches behave
+// exactly as before, in-memory only. The Helix app access token is
+// deliberately NOT stored (it's a credential and is cheap to re-obtain; it
+// stays per-instance in memory). Every call is try/caught -- a Redis outage
+// must never break hint rendering.
+const KV_BADGE_SETS_TTL_S = 6 * 60 * 60;
+const KV_CHANNEL_ID_TTL_S = 24 * 60 * 60;
+
+function kvCredentials(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim() || process.env.KV_REST_API_URL?.trim();
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim() || process.env.KV_REST_API_TOKEN?.trim();
+  return url && token ? { url, token } : null;
+}
+
+interface KvResponse {
+  result?: unknown;
+  error?: string;
+}
+
+async function kvGet<T>(key: string): Promise<T | null> {
+  const creds = kvCredentials();
+  if (!creds) return null;
+  try {
+    const res = await fetch(`${creds.url}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${creds.token}` },
+    });
+    const body = (await res.json()) as KvResponse;
+    if (!res.ok || body.error || body.result === undefined || body.result === null) return null;
+    return typeof body.result === 'string' ? (JSON.parse(body.result) as T) : null;
+  } catch (err) {
+    console.error('Shared cache read failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+async function kvSet(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const creds = kvCredentials();
+  if (!creds) return;
+  try {
+    const res = await fetch(`${creds.url}/set/${encodeURIComponent(key)}?EX=${ttlSeconds}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${creds.token}` },
+      body: JSON.stringify(value),
+    });
+    if (!res.ok) console.error(`Shared cache write failed for ${key}: HTTP ${res.status}`);
+  } catch (err) {
+    console.error('Shared cache write failed:', err instanceof Error ? err.message : err);
+  }
+}
+
 // Twitch's legacy unauthenticated badges.twitch.tv endpoint (what this
 // module originally used) was permanently shut down in June 2023 -- the
 // domain no longer resolves at all. The only supported replacement is the
@@ -103,6 +173,18 @@ async function fetchBadgeSets(url: string, retryOn401 = true, host?: string | nu
   const cached = displayCache.get(url);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
 
+  // KV is the shared L2: a warm instance's memory hit above skips this
+  // entirely; a cold instance reads the same value KV holds instead of
+  // fetching from Helix again. Only successful sets are stored, so a
+  // failed/unconfigured fetch (cached in memory with a short TTL) never
+  // poisons the shared cache.
+  const kvKey = `badgeSets:${url}`;
+  const fromKv = await kvGet<BadgeSets>(kvKey);
+  if (fromKv) {
+    displayCache.set(url, { fetchedAt: Date.now(), data: fromKv });
+    return fromKv;
+  }
+
   const token = await getAppAccessToken(false, host);
   const clientId = getTwitchClientId(host);
   let data: BadgeSets | null = null;
@@ -129,6 +211,7 @@ async function fetchBadgeSets(url: string, retryOn401 = true, host?: string | nu
   // flaky API -- or badge images simply being unconfigured -- doesn't get
   // hammered once per request.
   displayCache.set(url, { fetchedAt: Date.now(), data });
+  if (data) await kvSet(kvKey, data, KV_BADGE_SETS_TTL_S);
   return data;
 }
 
@@ -143,6 +226,16 @@ function bestImageUrl(version: HelixBadgeVersion | undefined): string | null {
 async function getTwitchChannelId(channel: string, host?: string | null): Promise<string | null> {
   if (channelIdCache.has(channel)) return channelIdCache.get(channel)!;
 
+  // Shared L2, same idea as fetchBadgeSets. Only non-null ids are stored --
+  // "channel not found yet" is cheap to look up again on a cold instance,
+  // and kv.get can't distinguish a stored null from a missing key.
+  const kvKey = `channelTwitchId:${channel}`;
+  const fromKv = await kvGet<string>(kvKey);
+  if (fromKv) {
+    channelIdCache.set(channel, fromKv);
+    return fromKv;
+  }
+
   let twitchChannelId: string | null = null;
   try {
     const { rows } = await getPool(host).query<{ twitch_channel_id: string }>(
@@ -155,6 +248,7 @@ async function getTwitchChannelId(channel: string, host?: string | null): Promis
   }
 
   channelIdCache.set(channel, twitchChannelId);
+  if (twitchChannelId) await kvSet(kvKey, twitchChannelId, KV_CHANNEL_ID_TTL_S);
   return twitchChannelId;
 }
 
