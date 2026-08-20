@@ -40,12 +40,13 @@ export async function fetchSeventvEmoteSet(twitchUserId, fetchImpl = fetch) {
 }
 
 // Scans `message` for tokens that exactly match codes in `emoteSet` (a Map
-// as returned by fetchSeventvEmoteSet). Returns one {start, id, code} per
-// occurrence, in message order, or an empty array when the message has no
-// matching tokens (or no set was provided). Matching is per whitespace-
-// delimited token and case-sensitive, so 7TV's own chat rendering rules are
-// preserved. The caller merges these with Twitch occurrences and lets
-// Twitch win on overlap (see mergeEmoteOccurrences in emotes.js).
+// as returned by fetchSeventvEmoteSet). Returns one
+// {start, id, code, provider: '7tv'} per occurrence, in message order, or
+// an empty array when the message has no matching tokens (or no set was
+// provided). Matching is per whitespace-delimited token and case-sensitive,
+// so 7TV's own chat rendering rules are preserved. The caller merges these
+// with Twitch occurrences and lets Twitch win on overlap (see
+// mergeEmoteOccurrences in emotes.js).
 export function parseSeventvEmotes(message, emoteSet) {
   if (!emoteSet || typeof message !== 'string') return [];
 
@@ -58,7 +59,7 @@ export function parseSeventvEmotes(message, emoteSet) {
     while (i < message.length && !isWhitespace(message[i])) i++;
     const token = message.slice(start, i);
     const emote = emoteSet.get(token);
-    if (emote) occurrences.push({ start, id: emote.id, code: emote.name });
+    if (emote) occurrences.push({ start, id: emote.id, code: emote.name, provider: '7tv' });
   }
   return occurrences;
 }
