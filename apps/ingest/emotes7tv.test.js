@@ -6,26 +6,28 @@ function emoteSet(...pairs) {
   return new Map(pairs.map(([name, id]) => [name, { id, name }]));
 }
 
+const SEVENTV_PROVIDER = { provider: '7tv' };
+
 test('parseSeventvEmotes matches exact-case whitespace-delimited tokens', () => {
   const set = emoteSet(['KEKW', '7tv-id-1'], ['PogO', '7tv-id-2']);
   assert.deepEqual(parseSeventvEmotes('KEKW hey KEKW PogO', set), [
-    { start: 0, id: '7tv-id-1', code: 'KEKW' },
-    { start: 9, id: '7tv-id-1', code: 'KEKW' },
-    { start: 14, id: '7tv-id-2', code: 'PogO' },
+    { start: 0, id: '7tv-id-1', code: 'KEKW', ...SEVENTV_PROVIDER },
+    { start: 9, id: '7tv-id-1', code: 'KEKW', ...SEVENTV_PROVIDER },
+    { start: 14, id: '7tv-id-2', code: 'PogO', ...SEVENTV_PROVIDER },
   ]);
 });
 
 test('parseSeventvEmotes is case-sensitive like real chat', () => {
   const set = emoteSet(['KEKW', '7tv-id-1']);
   assert.deepEqual(parseSeventvEmotes('kekw KEKW KeKw', set), [
-    { start: 5, id: '7tv-id-1', code: 'KEKW' },
+    { start: 5, id: '7tv-id-1', code: 'KEKW', ...SEVENTV_PROVIDER },
   ]);
 });
 
 test('parseSeventvEmotes never matches inside a longer token', () => {
   const set = emoteSet(['Pog', '7tv-id-1']);
   assert.deepEqual(parseSeventvEmotes('PogChamp Pog Poggers', set), [
-    { start: 9, id: '7tv-id-1', code: 'Pog' },
+    { start: 9, id: '7tv-id-1', code: 'Pog', ...SEVENTV_PROVIDER },
   ]);
 });
 
@@ -38,8 +40,8 @@ test('parseSeventvEmotes returns empty for no set, no match, or non-string', () 
 test('parseSeventvEmotes records positions across multiple whitespace runs', () => {
   const set = emoteSet(['EZ', '7tv-id-1'], ['catJAM', '7tv-id-2']);
   assert.deepEqual(parseSeventvEmotes('  EZ   catJAM', set), [
-    { start: 2, id: '7tv-id-1', code: 'EZ' },
-    { start: 7, id: '7tv-id-2', code: 'catJAM' },
+    { start: 2, id: '7tv-id-1', code: 'EZ', ...SEVENTV_PROVIDER },
+    { start: 7, id: '7tv-id-2', code: 'catJAM', ...SEVENTV_PROVIDER },
   ]);
 });
 
