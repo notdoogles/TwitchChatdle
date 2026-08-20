@@ -74,11 +74,16 @@ create index if not exists idx_messages_user_id on messages(user_id);
 -- Emotes used in the message, captured from the IRC \`emotes\` tag (the tag
 -- is only present when a message contains at least one emote, and tmi.js
 -- has already parsed it into emote-id -> character ranges; see
--- apps/ingest/emotes.js). Stored as an array of {id, code} -- one entry per
--- occurrence, in message order -- so apps/web's /stats page can rank the
--- channel's most-used emotes (by id, via the Twitch emoticon CDN) without
--- re-parsing message text. Null for messages logged before this column
--- existed; those simply don't contribute to emote stats.
+-- apps/ingest/emotes.js). Stored as an array of {id, code, provider, start}
+-- -- one entry per occurrence, in message order, where provider is "twitch"
+-- or "7tv" (7TV occurrences come from matching the channel's 7TV emote set
+-- at ingest time, see apps/ingest/emotes7tv.js) and start is the emote's
+-- character offset in message_text. apps/web's /stats page ranks the
+-- channel's most-used emotes from this column without re-parsing message
+-- text, and its game UI splices emote images back into revealed messages
+-- using id/provider/start. Rows written before the provider/start fields
+-- existed (or with null emotes at all) simply don't contribute emotes to
+-- rendering or stats.
 alter table messages add column if not exists emotes jsonb;
 
 -- Usernames that should never be logged, kept in the DB so you can

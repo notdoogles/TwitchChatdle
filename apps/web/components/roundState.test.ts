@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { SKIPPED_GUESS_LABEL } from '../lib/shareText';
 import { applyRoundResult, pickResultImage, RoundState } from './roundState';
 
+const line = (text: string) => ({ text, emotes: [] });
+
 const base: RoundState = {
   guesses: [],
-  lines: ['first message'],
+  lines: [line('first message')],
   status: 'playing',
   correctUsername: null,
   resultImage: null,
@@ -21,7 +23,7 @@ describe('applyRoundResult', () => {
         correct: true,
         gameOver: true,
         correctUsername: 'Alice',
-        allMessages: ['m1', 'm2', 'm3'],
+        allMessages: [line('m1'), line('m2'), line('m3')],
         answerHint: { color: '#FF0000' },
       },
       'Alice',
@@ -31,8 +33,8 @@ describe('applyRoundResult', () => {
     expect(result.openModal).toBe(true);
     expect(result.state.status).toBe('won');
     expect(result.state.guesses).toEqual(['Alice']);
-    expect(result.state.lines).toEqual(['first message']); // no next message on a win
-    expect(result.state.allMessages).toEqual(['m1', 'm2', 'm3']);
+    expect(result.state.lines).toEqual([line('first message')]); // no next message on a win
+    expect(result.state.allMessages).toEqual([line('m1'), line('m2'), line('m3')]);
     expect(result.state.answerHint).toEqual({ color: '#FF0000' });
     expect(result.state.correctUsername).toBe('Alice');
     expect(result.state.resultImage).toBe('/win.png');
@@ -41,14 +43,14 @@ describe('applyRoundResult', () => {
   it('stays playing on a wrong guess, appending the next message and hint', () => {
     const result = applyRoundResult(
       base,
-      { correct: false, gameOver: false, nextMessage: 'second message', hint: { globalBadges: [] } },
+      { correct: false, gameOver: false, nextMessage: line('second message'), hint: { globalBadges: [] } },
       'bob',
       [],
       []
     );
     expect(result.openModal).toBe(false);
     expect(result.state.status).toBe('playing');
-    expect(result.state.lines).toEqual(['first message', 'second message']);
+    expect(result.state.lines).toEqual([line('first message'), line('second message')]);
     expect(result.state.hints).toEqual({ globalBadges: [] });
     expect(result.state.resultImage).toBeNull();
   });
@@ -60,7 +62,7 @@ describe('applyRoundResult', () => {
         correct: false,
         gameOver: true,
         correctUsername: 'Alice',
-        allMessages: ['m1', 'm2', 'm3', 'm4', 'm5'],
+        allMessages: [line('m1'), line('m2'), line('m3'), line('m4'), line('m5')],
         answerHint: { usernameLength: 5 },
       },
       'bob',
@@ -69,8 +71,8 @@ describe('applyRoundResult', () => {
     );
     expect(result.openModal).toBe(true);
     expect(result.state.status).toBe('lost');
-    expect(result.state.lines).toEqual(['first message']); // no next message at game over
-    expect(result.state.allMessages).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
+    expect(result.state.lines).toEqual([line('first message')]); // no next message at game over
+    expect(result.state.allMessages).toEqual([line('m1'), line('m2'), line('m3'), line('m4'), line('m5')]);
     expect(result.state.answerHint).toEqual({ usernameLength: 5 });
     expect(result.state.resultImage).toBe('/lose.png');
   });
@@ -78,7 +80,7 @@ describe('applyRoundResult', () => {
   it('records a skip as its sentinel label without marking it correct', () => {
     const result = applyRoundResult(
       base,
-      { correct: false, gameOver: false, nextMessage: 'second message', hint: { globalBadges: [] } },
+      { correct: false, gameOver: false, nextMessage: line('second message'), hint: { globalBadges: [] } },
       SKIPPED_GUESS_LABEL,
       [],
       []

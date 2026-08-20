@@ -4,7 +4,8 @@ import dotenv from 'dotenv';
 import tmi from 'tmi.js';
 import pg from 'pg';
 import { isExcluded, mergeExcludedUsernames, parseChannels, parseExcludedFromEnv, shouldSkipMessage } from './filters.js';
-import { parseEmotes } from './emotes.js';
+import { mergeEmoteOccurrences, parseEmotes } from './emotes.js';
+import { fetchSeventvEmoteSet, parseSeventvEmotes } from './emotes7tv.js';
 
 // .env lives at the repo root, not in this workspace, so load it explicitly
 // rather than relying on dotenv/config's cwd-relative default.
@@ -21,6 +22,63 @@ const { Pool } = pg;
 const CHANNELS = parseChannels(process.env.TWITCH_CHANNELS, process.env.TWITCH_CHANNEL);
 const SKIP_COMMANDS = (process.env.SKIP_COMMANDS ?? 'true').toLowerCase() === 'true';
 const EXCLUDED_REFRESH_MS = 60_000;
+
+// ---------------------------------------------------------------------------
+// 7TV channel emotes
+// ---------------------------------------------------------------------------
+
+// Twitch's IRC `emotes` tag only carries Twitch emotes, so 7TV emotes are
+// recovered by matching message tokens against the channel's 7TV emote set
+// (fetched from the public v3 API, keyed by the channel's numeric Twitch
+// user id -- the same `room-id` tag used for the channels table). The set
+// is cached in memory per channel and refreshed periodically; this is a
+// long-running worker (not serverless), so no shared cache is needed. If
+// this ever runs as multiple ingest instances for the same channels,
+// mirror the badge-images pattern and add a shared KV layer.
+//
+// Emotes are captured at ingest time, not render time, so messages keep
+// the emote set that was live when they were logged. A channel with no
+// 7TV set (404) or a transient failure just yields Twitch-only emotes for
+// that refresh cycle -- never a dropped message.
+const SEVENTV_ENABLED = (process.env.SEVENTV_ENABLED ?? 'true').toLowerCase() !== 'false';
+const SEVENTV_REFRESH_MS = Math.max(Number(process.env.SEVENTV_REFRESH_MS ?? 300_000) || 300_000, 10_000);
+
+// roomId (the channel's numeric Twitch user id) -> Map of exact code ->
+// {id, name}, or null once a fetch succeeded with no set / a fetch failed
+// (kept so we don't refetch on every message; the interval retries).
+const seventvSets = new Map();
+// roomId -> in-flight fetch promise, so concurrent first messages for a
+// fresh channel only trigger one API call.
+const seventvFetches = new Map();
+
+// Kicks off the first fetch for a roomId the cache doesn't know yet. The
+// message handler is synchronous, so the fetch happens in the background
+// and messages queued before it resolves simply get Twitch-only emotes.
+function ensureSeventvEmoteSet(roomId) {
+  if (!SEVENTV_ENABLED || roomId == null || seventvSets.has(roomId)) return;
+  void refreshSeventvEmoteSet(roomId);
+}
+
+async function refreshSeventvEmoteSet(roomId) {
+  if (seventvFetches.has(roomId)) return seventvFetches.get(roomId);
+  const fetchPromise = fetchSeventvEmoteSet(roomId)
+    .then((set) => seventvSets.set(roomId, set))
+    .catch((err) => {
+      // fetchSeventvEmoteSet never throws, but keep the worker alive no
+      // matter what; the interval will retry.
+      console.error(`7TV emote set fetch failed for room ${roomId}:`, err instanceof Error ? err.message : err);
+      seventvSets.set(roomId, null);
+    })
+    .finally(() => seventvFetches.delete(roomId));
+  seventvFetches.set(roomId, fetchPromise);
+  return fetchPromise;
+}
+
+async function refreshAllSeventvSets() {
+  for (const roomId of [...seventvSets.keys()]) {
+    await refreshSeventvEmoteSet(roomId);
+  }
+}
 
 if (CHANNELS.length === 0) {
   console.error('Missing TWITCH_CHANNEL (or TWITCH_CHANNELS) in .env');
@@ -214,7 +272,10 @@ client.on('message', (channel, tags, message, self) => {
 
   // No awaits here: writes are queued and flushed in batches (see the
   // batching section above) so per-message work stays O(1) even during chat
-  // bursts. parseEmotes is pure CPU, so it can run synchronously.
+  // bursts. parseEmotes/parseSeventvEmotes are pure CPU and can run
+  // synchronously; the 7TV set fetch happens in the background (see
+  // ensureSeventvEmoteSet) and is cached per channel.
+  ensureSeventvEmoteSet(tags['room-id']);
   enqueueMessage({
     twitchUserId: tags['user-id'],
     username,
@@ -223,7 +284,10 @@ client.on('message', (channel, tags, message, self) => {
     color: tags.color,
     badges: tags.badges,
     text: message,
-    emotes: parseEmotes(tags, message),
+    emotes: mergeEmoteOccurrences(
+      parseEmotes(tags, message),
+      parseSeventvEmotes(message, seventvSets.get(tags['room-id']))
+    ),
     roomId: tags['room-id'],
   });
 });
@@ -235,6 +299,10 @@ client.on('connected', (addr, port) => {
 async function main() {
   await refreshExcludedUsernames();
   setInterval(refreshExcludedUsernames, EXCLUDED_REFRESH_MS);
+  if (SEVENTV_ENABLED) {
+    setInterval(refreshAllSeventvSets, SEVENTV_REFRESH_MS);
+    console.log(`7TV emote tracking enabled (refresh every ${SEVENTV_REFRESH_MS / 1000}s)`);
+  }
   await client.connect();
 }
 

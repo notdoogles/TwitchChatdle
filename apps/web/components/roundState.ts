@@ -3,17 +3,18 @@
 // and shared by the two handlers without drifting apart.
 
 import type { RoundHint } from '@/lib/hints';
+import type { MessageLine } from '@/lib/messageLine';
 
 export type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
 
 // The slice of GameBoard state that a guess/skip response mutates.
 export interface RoundState {
   guesses: string[];
-  lines: string[];
+  lines: MessageLine[];
   status: Status;
   correctUsername: string | null;
   resultImage: string | null;
-  allMessages: string[] | null;
+  allMessages: MessageLine[] | null;
   hints: RoundHint;
   answerHint: RoundHint;
 }
@@ -25,7 +26,7 @@ export interface InitialRound {
   gameDate: string;
   roundId: string;
   maxGuesses: number;
-  message: string;
+  message: MessageLine;
   usernameHints: string[];
 }
 
@@ -34,9 +35,9 @@ export interface InitialRound {
 export interface GuessResultData {
   correct: boolean;
   gameOver: boolean;
-  nextMessage?: string | null;
+  nextMessage?: MessageLine | null;
   correctUsername?: string;
-  allMessages?: string[];
+  allMessages?: MessageLine[];
   hint?: RoundHint;
   answerHint?: RoundHint;
 }

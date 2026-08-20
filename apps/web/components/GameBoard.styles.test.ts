@@ -74,6 +74,21 @@ describe('variable-length messages wrap instead of overflowing', () => {
   });
 });
 
+describe('inline emotes sit on the message baseline', () => {
+  const css = readCss('./GameBoard.module.css');
+
+  it('sizes emotes relative to the message text instead of fixed pixels', () => {
+    const body = ruleBody(css, 'emote');
+    expect(body).toMatch(/height:\s*1\.5em/);
+    expect(body).toMatch(/vertical-align:\s*middle/);
+  });
+
+  it('caps emote width so a wide 7TV emote cannot blow out the panel', () => {
+    const body = ruleBody(css, 'emote');
+    expect(body).toMatch(/max-width:/);
+  });
+});
+
 describe('long revealed messages do not compress the results view', () => {
   const css = readCss('./GameBoard.module.css');
 

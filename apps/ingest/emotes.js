@@ -7,6 +7,11 @@
 // of that emote in the message. The code (e.g. "Kappa") is recovered by
 // slicing the message text at those positions, since the tag itself only
 // carries positions, not codes.
+//
+// Every captured occurrence is stored as {id, code, provider, start}:
+// `provider` is "twitch" here (see emotes7tv.js for "7tv" occurrences) and
+// `start` is the character offset of the emote in the message, which
+// apps/web needs to splice emote images back into the text when rendering.
 
 const RANGE_PATTERN = /^(\d+)-(\d+)$/;
 
@@ -36,11 +41,11 @@ function parseRawEmotesTag(raw) {
 }
 
 // Extracts the emotes used in `message` from the IRC tags tmi.js delivered.
-// Returns an array of { id, code } -- one entry per occurrence, in the order
-// the emotes appear in the message -- or null when the message has no
-// emotes (the tag is only present when it does). `tags` is the tmi.js tags
-// object for the message; `tags.emotes` is expected to already be parsed to
-// { emoteId: ['start-end', ...] }.
+// Returns an array of { id, code, provider: 'twitch', start } -- one entry
+// per occurrence, in the order the emotes appear in the message -- or null
+// when the message has no emotes (the tag is only present when it does).
+// `tags` is the tmi.js tags object for the message; `tags.emotes` is
+// expected to already be parsed to { emoteId: ['start-end', ...] }.
 export function parseEmotes(tags, message) {
   if (!tags || typeof tags !== 'object' || typeof message !== 'string') return null;
   const raw = tags.emotes;
@@ -63,5 +68,25 @@ export function parseEmotes(tags, message) {
   // The tag's object groups ranges by emote id, not message position, so
   // sort by character index to restore the order they appear in the text.
   occurrences.sort((a, b) => a.start - b.start);
-  return occurrences.map(({ id, code }) => ({ id, code }));
+  return occurrences.map(({ start, id, code }) => ({ start, id, code, provider: 'twitch' }));
+}
+
+// Combines Twitch and 7TV occurrences into one list, ordered by character
+// position, with Twitch winning whenever a 7TV token overlaps a Twitch
+// emote's range (in real chat, a channel's Twitch emote set overrides a
+// 7TV emote of the same code). `twitch` is parseEmotes' result (null when
+// the message had no Twitch emotes) and `seventv` is parseSeventvEmotes'
+// result from emotes7tv.js (an array, possibly empty).
+export function mergeEmoteOccurrences(twitch, seventv) {
+  const combined = [...(twitch ?? []), ...(seventv ?? [])];
+  if (combined.length === 0) return null;
+  combined.sort((a, b) => a.start - b.start || (a.provider === 'twitch' ? -1 : 1));
+  const merged = [];
+  for (const occurrence of combined) {
+    const prev = merged[merged.length - 1];
+    // Skip 7TV occurrences swallowed by the preceding Twitch emote's range.
+    if (prev && occurrence.provider === '7tv' && occurrence.start < prev.start + prev.code.length) continue;
+    merged.push(occurrence);
+  }
+  return merged;
 }

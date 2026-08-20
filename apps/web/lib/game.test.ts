@@ -163,7 +163,8 @@ describe('createRound', () => {
     const round = await createRound('somechannel');
     expect(round.maxGuesses).toBe(5);
     expect(round.guessesRemaining).toBe(5);
-    expect(round.message).toMatch(/from bob/);
+    expect(round.message.text).toMatch(/from bob/);
+    expect(round.message.emotes).toEqual([]);
     // alice has only 3 eligible messages (< 5), so she's excluded from the
     // hint list too, not just from being pickable as the answer.
     expect(round.usernameHints).toEqual(['bob']);
@@ -175,7 +176,7 @@ describe('createRound', () => {
     const roundA = await createRound('somechannel');
     setupCreateRoundMocks(rows);
     const roundB = await createRound('somechannel');
-    expect(roundA.message).toBe(roundB.message);
+    expect(roundA.message).toEqual(roundB.message);
   });
 
   it('returns the existing round instead of creating a new one on a second call the same day', async () => {
@@ -185,7 +186,7 @@ describe('createRound', () => {
     });
     const round = await createRound('somechannel');
     expect(round.roundId).toBe('existing-round-id');
-    expect(round.message).toBe('this is unique chat message number 0 from alice');
+    expect(round.message).toEqual({ text: 'this is unique chat message number 0 from alice', emotes: [] });
   });
 
   it('serves an existing round from its stored hints without re-running the candidate query', async () => {
@@ -229,7 +230,7 @@ describe('createRound', () => {
       existingRoundRows: [{ id: 'existing-round-id', message_ids: [100], max_guesses: 5, username_hints: ['alice', 'bob'] }],
     });
     const round = await createRound('somechannel');
-    expect(round.message).toBe('this is unique chat message number 0 from alice');
+    expect(round.message).toEqual({ text: 'this is unique chat message number 0 from alice', emotes: [] });
     expect(round.usernameHints).toEqual(['alice', 'bob']);
   });
 
@@ -271,7 +272,7 @@ describe('createRound', () => {
     ];
     setupCreateRoundMocks(rows);
     const round = await createRound('somechannel');
-    const correctUsername = round.message.split(' from ')[1];
+    const correctUsername = round.message.text.split(' from ')[1];
     expect(round.usernameHints).toContain(correctUsername);
     expect(round.usernameHints).toHaveLength(3);
     vi.unstubAllEnvs();
@@ -300,7 +301,7 @@ describe('createRound', () => {
     const rows = [...candidatesForUser(1, 'alice', 8), ...candidatesForUser(2, 'bob', 5)];
     setupCreateRoundMocks(rows);
     const round = await createRound('somechannel');
-    expect(round.message).toMatch(/from alice/);
+    expect(round.message.text).toMatch(/from alice/);
     vi.unstubAllEnvs();
   });
 
@@ -320,7 +321,7 @@ describe('rerollRound', () => {
 
     setupRerollRoundMocks(rows);
     const rerolled = await rerollRound('somechannel');
-    expect(rerolled.message).toBe(original.message);
+    expect(rerolled.message).toEqual(original.message);
   });
 
   it('is deterministic for the same stored variant', async () => {
@@ -329,7 +330,7 @@ describe('rerollRound', () => {
     const a = await rerollRound('somechannel');
     setupRerollRoundMocks(rows, { existingVariant: 2 });
     const b = await rerollRound('somechannel');
-    expect(a.message).toBe(b.message);
+    expect(a.message).toEqual(b.message);
   });
 
   it('increments the variant stored on the existing round', async () => {
@@ -403,9 +404,9 @@ function setupSubmitGuessMocks(round: {
     if (sql.includes('join users u')) {
       return { rows: round ? [round] : [] };
     }
-    if (sql.trim() === 'select message_text from messages where id = $1') {
+    if (sql.includes('select message_text, emotes from messages where id = $1')) {
       const id = params[0] as number;
-      return { rows: [{ message_text: messagesById.get(id) ?? null }] };
+      return { rows: [{ message_text: messagesById.get(id) ?? null, emotes: null }] };
     }
     if (sql.includes('insert into game_results')) {
       return { rows: [] };
@@ -442,7 +443,7 @@ describe('submitGuess', () => {
     expect(result.correct).toBe(true);
     expect(result.gameOver).toBe(true);
     expect(result.correctUsername).toBe('Alice');
-    expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
+    expect(result.allMessages).toEqual(messageIds.map((id) => ({ text: `message #${id}`, emotes: [] })));
     expect(result.hint).toBeUndefined();
     expect(result.answerHint).toEqual({
       globalBadges: [{ label: 'Prime', iconUrl: null, title: null }],
@@ -457,7 +458,7 @@ describe('submitGuess', () => {
     expect(result.correct).toBe(false);
     expect(result.gameOver).toBe(false);
     expect(result.guessesRemaining).toBe(4);
-    expect(result.nextMessage).toBe('message #2');
+    expect(result.nextMessage).toEqual({ text: 'message #2', emotes: [] });
     expect(result.allMessages).toBeUndefined();
   });
 
@@ -538,7 +539,7 @@ describe('submitGuess', () => {
     expect(result.correct).toBe(false);
     expect(result.gameOver).toBe(true);
     expect(result.correctUsername).toBe('Alice');
-    expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
+    expect(result.allMessages).toEqual(messageIds.map((id) => ({ text: `message #${id}`, emotes: [] })));
     expect(result.nextMessage).toBeNull();
     expect(result.answerHint).toEqual({
       globalBadges: [{ label: 'Prime', iconUrl: null, title: null }],
@@ -576,7 +577,7 @@ describe('skipMessage', () => {
     expect(result.correct).toBe(false);
     expect(result.gameOver).toBe(false);
     expect(result.guessesRemaining).toBe(4);
-    expect(result.nextMessage).toBe('message #2');
+    expect(result.nextMessage).toEqual({ text: 'message #2', emotes: [] });
     expect(result.allMessages).toBeUndefined();
     // A skip counts like a wrong guess: it unlocks the easy-mode hint the
     // next round would normally reveal.
@@ -597,7 +598,7 @@ describe('skipMessage', () => {
     expect(result.correct).toBe(false);
     expect(result.gameOver).toBe(true);
     expect(result.correctUsername).toBe('Alice');
-    expect(result.allMessages).toEqual(messageIds.map((id) => `message #${id}`));
+    expect(result.allMessages).toEqual(messageIds.map((id) => ({ text: `message #${id}`, emotes: [] })));
     expect(result.nextMessage).toBeNull();
     expect(result.hint).toBeUndefined();
     expect(result.answerHint).toEqual({
