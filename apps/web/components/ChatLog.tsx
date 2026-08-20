@@ -5,7 +5,7 @@ import styles from './GameBoard.module.css';
 import EmoteLine from './EmoteLine';
 import { NONE_LABEL, RoundHint, maskForHint } from '@/lib/hints';
 import type { Status } from './roundState';
-import type { MessageLine } from '@/lib/game';
+import type { MessageLine } from '@/lib/messageLine';
 
 interface ChatLogProps {
   lines: MessageLine[];

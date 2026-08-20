@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import styles from './GameBoard.module.css';
-import type { EmoteRef, MessageLine } from '@/lib/game';
+import type { EmoteRef, MessageLine } from '@/lib/messageLine';
 
 // Emote image URL for a captured occurrence: Twitch emotes come from
 // Twitch's static emoticon CDN (same scale as lib/stats.ts), 7TV ones from

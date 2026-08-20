@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import EmoteLine, { emoteImageUrl } from './EmoteLine';
-import type { MessageLine } from '../lib/game';
+import type { MessageLine } from '../lib/messageLine';
 
 describe('emoteImageUrl', () => {
   it('builds the Twitch emoticon CDN URL from the emote id', () => {

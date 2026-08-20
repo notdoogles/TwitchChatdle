@@ -12,8 +12,8 @@ import {
 } from '@/lib/config';
 import { SKIPPED_GUESS_LABEL, buildShareText } from '@/lib/shareText';
 import type { RoundHint } from '@/lib/hints';
-import type { MessageLine } from '@/lib/game';
-import { toMessageLine } from '@/lib/game';
+import type { MessageLine } from '@/lib/messageLine';
+import { toMessageLine } from '@/lib/messageLine';
 import { applyRoundResult, InitialRound, pickResultImage, RoundState, Status } from './roundState';
 import ChatLog from './ChatLog';
 import GuessForm from './GuessForm';

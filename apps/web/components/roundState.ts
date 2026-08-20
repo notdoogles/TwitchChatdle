@@ -3,7 +3,7 @@
 // and shared by the two handlers without drifting apart.
 
 import type { RoundHint } from '@/lib/hints';
-import type { MessageLine } from '@/lib/game';
+import type { MessageLine } from '@/lib/messageLine';
 
 export type Status = 'loading' | 'playing' | 'won' | 'lost' | 'error';
 
