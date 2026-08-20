@@ -32,9 +32,10 @@ export interface TopChatter {
 export interface TopEmote {
   id: string;
   code: string;
+  provider: 'twitch' | '7tv';
   count: number;
-  // Twitch's public emoticon CDN (the same URL all chat clients use), keyed
-  // by emote id since codes are not unique across Twitch's history.
+  // The provider's public CDN URL (see emoteImageUrl), keyed by emote id
+  // since codes are not unique across Twitch's history or across providers.
   imageUrl: string;
 }
 
@@ -75,10 +76,13 @@ export interface ChannelStats {
 const LIMIT = 10;
 const WORD_CLOUD_LIMIT = 80;
 
-// Emotes are rendered from Twitch's public static CDN using their numeric
-// id; the code is kept as a fallback/alt text. The 2.0 size is the largest
-// scale Twitch serves for emotes.
-export function emoteImageUrl(emoteId: string): string {
+// Emotes are rendered from the provider's public static CDN using their id
+// (Twitch emotes: their numeric id on static-cdn.jtvnw.net; 7TV emotes:
+// their uuid on cdn.7tv.app); the code is kept as a fallback/alt text. The
+// 2.0/2x sizes are the largest scale each provider serves. Rows written
+// before the provider field existed are treated as Twitch.
+export function emoteImageUrl(emoteId: string, provider: string = 'twitch'): string {
+  if (provider === '7tv') return `https://cdn.7tv.app/emote/${emoteId}/2x.webp`;
   return `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`;
 }
 
@@ -226,11 +230,11 @@ const TOP_CHATTERS_SQL = `select coalesce(u.display_name, u.username) as usernam
                           order by message_count desc, username asc
                           limit ${LIMIT}`;
 
-const TOP_EMOTES_SQL = `select e->>'id' as id, e->>'code' as code, count(*)::int as count
+const TOP_EMOTES_SQL = `select e->>'id' as id, e->>'code' as code, coalesce(e->>'provider', 'twitch') as provider, count(*)::int as count
                         from messages m
                         cross join lateral jsonb_array_elements(coalesce(m.emotes, '[]'::jsonb)) as e
                         where m.channel = $1
-                        group by e->>'id', e->>'code'
+                        group by e->>'id', e->>'code', coalesce(e->>'provider', 'twitch')
                         order by count desc, code asc
                         limit ${LIMIT}`;
 
@@ -281,6 +285,7 @@ interface TopChatterRow {
 interface TopEmoteRow {
   id: string;
   code: string;
+  provider: 'twitch' | '7tv';
   count: number;
 }
 
@@ -334,8 +339,9 @@ export async function getChannelStats(channel: string, host?: string | null): Pr
   const topEmotes: TopEmote[] = emotesRes.rows.map((r) => ({
     id: r.id,
     code: r.code,
+    provider: r.provider,
     count: r.count,
-    imageUrl: emoteImageUrl(r.id),
+    imageUrl: emoteImageUrl(r.id, r.provider),
   }));
 
   const wordCloud: WordCloudWord[] = wordsRes.rows.map((r) => ({

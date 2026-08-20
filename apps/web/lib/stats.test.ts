@@ -83,8 +83,13 @@ describe('classifyBadgeSlug', () => {
 });
 
 describe('emoteImageUrl', () => {
-  it('builds the Twitch emoticon CDN URL from the emote id', () => {
+  it('builds the Twitch emoticon CDN URL from the emote id by default', () => {
     expect(emoteImageUrl('25')).toBe('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0');
+    expect(emoteImageUrl('25', 'twitch')).toBe('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0');
+  });
+
+  it('builds the 7TV CDN URL from the emote id for 7tv provider rows', () => {
+    expect(emoteImageUrl('7tv-uuid', '7tv')).toBe('https://cdn.7tv.app/emote/7tv-uuid/2x.webp');
   });
 });
 
@@ -113,7 +118,13 @@ describe('getChannelStats', () => {
         };
       }
       if (sql.includes("e->>'id'")) {
-        return { rows: [{ id: '25', code: 'Kappa', count: 40 }, { id: '1902', code: 'PogChamp', count: 10 }] };
+        return {
+          rows: [
+            { id: '25', code: 'Kappa', provider: 'twitch', count: 40 },
+            { id: '7tv-uuid', code: 'KEKW', provider: '7tv', count: 30 },
+            { id: '1902', code: 'PogChamp', provider: 'twitch', count: 10 },
+          ],
+        };
       }
       if (sql.includes('regexp_split_to_table')) {
         return { rows: [{ word: 'pog', count: 15 }, { word: 'watching', count: 12 }] };
@@ -156,8 +167,9 @@ describe('getChannelStats', () => {
       { username: 'Bob', messageCount: 20, color: null },
     ]);
     expect(stats.topEmotes).toEqual([
-      { id: '25', code: 'Kappa', count: 40, imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' },
-      { id: '1902', code: 'PogChamp', count: 10, imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/1902/default/dark/2.0' },
+      { id: '25', code: 'Kappa', provider: 'twitch', count: 40, imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' },
+      { id: '7tv-uuid', code: 'KEKW', provider: '7tv', count: 30, imageUrl: 'https://cdn.7tv.app/emote/7tv-uuid/2x.webp' },
+      { id: '1902', code: 'PogChamp', provider: 'twitch', count: 10, imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/1902/default/dark/2.0' },
     ]);
     expect(stats.wordCloud).toEqual([
       { word: 'pog', count: 15 },

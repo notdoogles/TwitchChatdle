@@ -2,11 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import styles from './GameBoard.module.css';
+import EmoteLine from './EmoteLine';
 import { NONE_LABEL, RoundHint, maskForHint } from '@/lib/hints';
 import type { Status } from './roundState';
+import type { MessageLine } from '@/lib/game';
 
 interface ChatLogProps {
-  lines: string[];
+  lines: MessageLine[];
   isOver: boolean;
   showAllMessages: boolean;
   easyMode: boolean;
@@ -63,7 +65,7 @@ export default function ChatLog({
       className={`${styles.chatLog}${isOver ? '' : ` ${styles.chatLogScroll}`}`}
       ref={chatLogRef}
     >
-      {lines.map((text, i) => (
+      {lines.map((line, i) => (
         <div key={i} className={styles.chatLine}>
           <span className={styles.username}>
             {/* Twitch renders a chatter's badges right-to-left (the
@@ -124,7 +126,9 @@ export default function ChatLog({
               </>
             )}
           </span>
-          <span className={styles.message}>{text}</span>
+          <span className={styles.message}>
+            <EmoteLine line={line} />
+          </span>
         </div>
       ))}
 

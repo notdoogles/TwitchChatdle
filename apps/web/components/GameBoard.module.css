@@ -168,6 +168,15 @@
   vertical-align: middle;
 }
 
+/* Inline emote image (Twitch or 7TV, see components/EmoteLine.tsx), scaled
+   to the message's line height like Twitch chat's own rendering, and kept
+   on the text baseline so it doesn't disrupt the line's vertical rhythm. */
+.emote {
+  height: 1.5em;
+  max-width: 96px;
+  vertical-align: middle;
+}
+
 .message {
   color: var(--text-primary);
   /* .chatLine is now a flex row (see above) -- without flex:1/min-width:0

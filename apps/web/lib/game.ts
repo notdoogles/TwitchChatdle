@@ -15,6 +15,57 @@ import {
 export const MAX_GUESSES = 5;
 const MIN_MESSAGES_PER_ROUND = MAX_GUESSES;
 
+// One captured emote occurrence within a message. Stored per message in
+// messages.emotes at ingest time ({id, code, provider, start} -- see
+// apps/ingest/emotes.js), carried through the API so the client can splice
+// the emote's image into the revealed text without re-parsing it.
+export type EmoteProvider = 'twitch' | '7tv';
+
+export interface EmoteRef {
+  id: string;
+  code: string;
+  provider: EmoteProvider;
+  // Character offset of the emote within the message text.
+  start: number;
+}
+
+// A message as the game UI consumes it: the raw text plus which spans of
+// it are emotes (empty when the message had none, or was logged before
+// emote capture existed).
+export interface MessageLine {
+  text: string;
+  emotes: EmoteRef[];
+}
+
+// Normalizes anything a client/localStorage/API payload might hold into a
+// valid MessageLine: plain strings (older builds stored lines as strings)
+// and DB rows whose emotes predate the provider/start fields both degrade
+// to text-only rendering rather than erroring.
+export function toMessageLine(value: unknown): MessageLine {
+  if (typeof value === 'string') return { text: value, emotes: [] };
+  if (value && typeof value === 'object') {
+    const { text, emotes } = value as { text?: unknown; emotes?: unknown };
+    if (typeof text === 'string') {
+      const refs: EmoteRef[] = [];
+      if (Array.isArray(emotes)) {
+        for (const entry of emotes) {
+          if (!entry || typeof entry !== 'object') continue;
+          const { id, code, provider, start } = entry as Partial<EmoteRef>;
+          if (typeof id !== 'string' || id.length === 0 || typeof code !== 'string' || code.length === 0) continue;
+          if (provider !== 'twitch' && provider !== '7tv') continue;
+          if (typeof start !== 'number' || !Number.isFinite(start) || start < 0 || start + code.length > text.length) {
+            continue;
+          }
+          refs.push({ id, code, provider, start });
+        }
+      }
+      refs.sort((a, b) => a.start - b.start);
+      return { text, emotes: refs };
+    }
+  }
+  return { text: String(value ?? ''), emotes: [] };
+}
+
 interface CandidateRow {
   id: number;
   user_id: number;
@@ -25,7 +76,7 @@ interface CandidateRow {
 export interface NewRound {
   roundId: string;
   gameDate: string;
-  message: string;
+  message: MessageLine;
   guessesRemaining: number;
   maxGuesses: number;
   usernameHints: string[];
@@ -35,9 +86,9 @@ export interface GuessResult {
   correct: boolean;
   gameOver: boolean;
   guessesRemaining?: number;
-  nextMessage?: string | null;
+  nextMessage?: MessageLine | null;
   correctUsername?: string;
-  allMessages?: string[];
+  allMessages?: MessageLine[];
   // Easy-mode hint unlocked alongside this guess's nextMessage (see
   // buildHintForRound below). Present regardless of the player's
   // easy/hard preference -- that's a client-only rendering choice, same
@@ -455,17 +506,18 @@ async function buildNewRoundFromRow(
   maxGuesses: number,
   host?: string | null
 ): Promise<NewRound> {
-  const { rows } = await getPool(host).query(
-    `select m.message_text, u.username
+  const { rows } = await getPool(host).query<{ message_text: string; emotes: unknown }>(
+    `select m.message_text, m.emotes
      from messages m
      join users u on u.id = m.user_id
      where m.id = $1`,
     [messageIds[0]]
   );
+  const first = rows[0];
   return {
     roundId,
     gameDate,
-    message: rows[0]?.message_text ?? '',
+    message: toMessageLine(first ? { text: first.message_text, emotes: first.emotes } : null),
     guessesRemaining: maxGuesses,
     maxGuesses,
     usernameHints,
@@ -497,21 +549,23 @@ function capUsernameHints(allUsernames: string[], correctUsername: string | unde
   return [...others, correctUsername].sort();
 }
 
-// Fetches message texts for a set of ids, preserving the given order.
-// Queries one id at a time (same pattern as the single-message lookups
-// below) rather than a batched `where id = any(...)` + JS-side remap --
-// Postgres can return bigint columns as strings, which would silently
-// break a Map keyed by the numeric ids from game_rounds.message_ids.
-async function fetchMessagesByIds(messageIds: number[], host?: string | null): Promise<string[]> {
-  const texts: string[] = [];
+// Fetches messages for a set of ids, preserving the given order, with each
+// message's captured emotes attached (see MessageLine). Queries one id at a
+// time (same pattern as the single-message lookups below) rather than a
+// batched `where id = any(...)` + JS-side remap -- Postgres can return
+// bigint columns as strings, which would silently break a Map keyed by the
+// numeric ids from game_rounds.message_ids.
+async function fetchMessagesByIds(messageIds: number[], host?: string | null): Promise<MessageLine[]> {
+  const lines: MessageLine[] = [];
   for (const id of messageIds) {
-    const { rows } = await getPool(host).query<{ message_text: string }>(
-      'select message_text from messages where id = $1',
+    const { rows } = await getPool(host).query<{ message_text: string; emotes: unknown }>(
+      'select message_text, emotes from messages where id = $1',
       [id]
     );
-    texts.push(rows[0]?.message_text ?? '');
+    const row = rows[0];
+    lines.push(toMessageLine(row ? { text: row.message_text, emotes: row.emotes } : null));
   }
-  return texts;
+  return lines;
 }
 
 interface RoundRow {
@@ -599,15 +653,18 @@ export async function submitGuess(
   const nextIndex = guessNumber + 1;
   const gameOver = nextIndex >= round.max_guesses;
 
-  let nextMessage: string | null = null;
-  let allMessages: string[] | undefined;
+  let nextMessage: MessageLine | null = null;
+  let allMessages: MessageLine[] | undefined;
   let hint: RoundHint | undefined;
   let answerHint: RoundHint | undefined;
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
-    const { rows: msgRows } = await getPool(host).query('select message_text from messages where id = $1', [nextId]);
-    nextMessage = msgRows[0]?.message_text ?? null;
+    const { rows: msgRows } = await getPool(host).query<{ message_text: string; emotes: unknown }>(
+      'select message_text, emotes from messages where id = $1',
+      [nextId]
+    );
+    nextMessage = toMessageLine(msgRows[0] ? { text: msgRows[0].message_text, emotes: msgRows[0].emotes } : null);
     hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel, host);
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids, host);
@@ -648,15 +705,18 @@ export async function skipMessage(
   const nextIndex = guessNumber + 1;
   const gameOver = nextIndex >= round.max_guesses;
 
-  let nextMessage: string | null = null;
-  let allMessages: string[] | undefined;
+  let nextMessage: MessageLine | null = null;
+  let allMessages: MessageLine[] | undefined;
   let hint: RoundHint | undefined;
   let answerHint: RoundHint | undefined;
   if (!gameOver) {
     const messageIds: number[] = round.message_ids;
     const nextId = messageIds[nextIndex];
-    const { rows: msgRows } = await getPool(host).query('select message_text from messages where id = $1', [nextId]);
-    nextMessage = msgRows[0]?.message_text ?? null;
+    const { rows: msgRows } = await getPool(host).query<{ message_text: string; emotes: unknown }>(
+      'select message_text, emotes from messages where id = $1',
+      [nextId]
+    );
+    nextMessage = toMessageLine(msgRows[0] ? { text: msgRows[0].message_text, emotes: msgRows[0].emotes } : null);
     hint = await buildHintForRound(nextIndex, round.username, round.color, round.badges, round.channel, host);
   } else {
     allMessages = await fetchMessagesByIds(round.message_ids, host);

@@ -12,6 +12,8 @@ import {
 } from '@/lib/config';
 import { SKIPPED_GUESS_LABEL, buildShareText } from '@/lib/shareText';
 import type { RoundHint } from '@/lib/hints';
+import type { MessageLine } from '@/lib/game';
+import { toMessageLine } from '@/lib/game';
 import { applyRoundResult, InitialRound, pickResultImage, RoundState, Status } from './roundState';
 import ChatLog from './ChatLog';
 import GuessForm from './GuessForm';
@@ -44,12 +46,12 @@ interface StoredState {
   gameDate: string;
   roundId: string;
   maxGuesses: number;
-  lines: string[];
+  lines: MessageLine[];
   guesses: string[];
   status: Status;
   correctUsername: string | null;
   resultImage: string | null;
-  allMessages: string[] | null;
+  allMessages: MessageLine[] | null;
   hints: RoundHint;
   // The chatter's full color/badge info once the round ends -- independent
   // of `hints` (which only reflects however many easy-mode hints were
@@ -161,13 +163,13 @@ export default function GameBoard({
   const [status, setStatus] = useState<Status>('loading');
   const [gameDate, setGameDate] = useState<string | null>(null);
   const [roundId, setRoundId] = useState<string | null>(null);
-  const [lines, setLines] = useState<string[]>([]);
+  const [lines, setLines] = useState<MessageLine[]>([]);
   const [guesses, setGuesses] = useState<string[]>([]);
   const [maxGuesses, setMaxGuesses] = useState(0);
   const [usernameHints, setUsernameHints] = useState<string[]>([]);
   const [correctUsername, setCorrectUsername] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
-  const [allMessages, setAllMessages] = useState<string[] | null>(null);
+  const [allMessages, setAllMessages] = useState<MessageLine[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -222,7 +224,7 @@ export default function GameBoard({
       const today = getGameDate(new Date(), window.location.hostname, { resetHour, resetTimezone });
       cleanupOldEntries(storagePrefix, today);
 
-      let data: { roundId: string; maxGuesses: number; message: string; usernameHints?: string[] };
+      let data: { roundId: string; maxGuesses: number; message: MessageLine; usernameHints?: string[] };
       if (initialRound && initialRound.gameDate === today) {
         // Matches what /api/game/new returns, minus guessesRemaining which
         // this code path doesn't use.
@@ -246,7 +248,11 @@ export default function GameBoard({
 
       const stored = loadStored(storagePrefix, today);
       if (stored && stored.roundId === data.roundId) {
-        setLines(stored.lines);
+        // Older builds persisted lines as plain strings; normalize so emote
+        // rendering and the end-of-round transcript both get MessageLines.
+        const storedLines = (stored.lines ?? []).map(toMessageLine);
+        const storedAllMessages = stored.allMessages ? stored.allMessages.map(toMessageLine) : null;
+        setLines(storedLines);
         setGuesses(stored.guesses);
         setCorrectUsername(stored.correctUsername);
         setHints(stored.hints ?? {});
@@ -255,7 +261,7 @@ export default function GameBoard({
           stored.resultImage ??
             (stored.status === 'won' ? pickResultImage(winnerImages) : stored.status === 'lost' ? pickResultImage(loserImages) : null)
         );
-        setAllMessages(stored.allMessages ?? null);
+        setAllMessages(storedAllMessages);
         setModalOpen(stored.status === 'won' || stored.status === 'lost');
         setShowAllMessages(false);
         setStatus(stored.status);
